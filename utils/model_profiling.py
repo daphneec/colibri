@@ -17,6 +17,9 @@ import models.secure_mobilenet_base as smb
 import models.secure_hrnet as shr
 import models.secure_hrnet_base as shrb
 
+from utils.fix_hook import fix_hook
+
+
 model_profiling_hooks = []
 model_profiling_speed_hooks = []
 

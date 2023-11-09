@@ -23,8 +23,8 @@ from utils import prune
 from mmseg import seg_dataflow
 from mmseg.loss import CrossEntropyLoss, JointsMSELoss, accuracy_keypoint
 
-import models.mobilenet_base as mb
-import common as mc
+import models.secure_mobilenet_base as mb
+import secure_common as mc
 from mmseg.validation import SegVal, keypoint_val
 
 

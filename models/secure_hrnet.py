@@ -14,8 +14,6 @@ from models.secure_mobilenet_base import ConvBNReLU
 from models.secure_mobilenet_base import get_active_fn
 from models.secure_mobilenet_base import InvertedResidualChannels, InvertedResidualChannelsFused
 
-from utils.fix_hook import fix_hook
-
 __all__ = ['HighResolutionNet']
 
 checkpoint_kwparams = None

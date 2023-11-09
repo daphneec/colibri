@@ -5,7 +5,7 @@ import itertools
 import logging
 import torch
 import torch.nn as nn
-import models.mobilenet_base as mb
+import models.secure_mobilenet_base as mb
 from utils import distributed as udist
 
 

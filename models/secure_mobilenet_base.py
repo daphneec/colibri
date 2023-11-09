@@ -16,8 +16,6 @@ from utils.common import get_device
 import crypten.nn as cnn
 from models.secure_transformer import secure_Transformer
 
-from utils.fix_hook import fix_hook
-
 def _make_divisible(v, divisor, min_value=None):
     """Make channels divisible to divisor.
 

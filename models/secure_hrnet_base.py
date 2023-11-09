@@ -13,8 +13,6 @@ from models.secure_mobilenet_base import _make_divisible
 from models.secure_mobilenet_base import get_active_fn
 from models.secure_mobilenet_base import InvertedResidualChannels
 
-from utils.fix_hook import fix_hook
-
 __all__ = ['HighResolutionNetBase']
 
 
