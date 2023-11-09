@@ -9,7 +9,10 @@ import models.mobilenet_base as mb
 import models.hrnet as hr
 import models.hrnet_base as hrb
 import models.transformer as transformer
+import models.secure_transformer as secure_transformer
 from utils import distributed as udist
+
+import crypten
 
 model_profiling_hooks = []
 model_profiling_speed_hooks = []
@@ -88,7 +91,7 @@ def module_profiling(self, input, output, num_forwards, verbose):
         t = type(self)
         self._profiling_input_size = ins
         self._profiling_output_size = outs
-    if isinstance(self, nn.Conv2d):
+    if isinstance(self, cnn.Conv2d):
         self.n_macs = (ins[1] * outs[1] * self.kernel_size[0] *
                        self.kernel_size[1] * outs[2] * outs[3] //
                        self.groups) * outs[0]
@@ -330,7 +333,7 @@ def model_profiling(model,
                      'nanosecs'.rjust(seconds_space, ' '))
         logging.info(''.center(
             name_space + params_space + macs_space + seconds_space, '-'))
-    with torch.no_grad():
+    with crypten.no_grad():
         model(data)
     if verbose:
         logging.info(''.center(

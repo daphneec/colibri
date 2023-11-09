@@ -13,6 +13,7 @@ import models.compress_utils as cu
 from utils.common import add_prefix
 from utils.common import get_device
 from models.transformer import Transformer
+from models.secure_transformer import secure_Transformer
 
 
 def _make_divisible(v, divisor, min_value=None):
