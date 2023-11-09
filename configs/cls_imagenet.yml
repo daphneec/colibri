@@ -62,7 +62,7 @@ allreduce_bn: False  # whether to sync BN'statistics every iteration
 
 model: models.hrnet
 model_kwparams: {
-  active_fn: 'nn.ReLU',
+  active_fn: 'cnn.ReLU',
   num_classes: 1000,
   width_mult: 1.0,
   round_nearest: 2,

@@ -11,6 +11,7 @@ from torch import nn, Tensor
 from torch.nn import functional as F
 
 import crypten.nn as cnn
+from utils.fix_hook import fix_hook
 
 class secure_MHAttentionMap(cnn.Module):
     """This is a 2D attention module, which only returns the attention softmax (no multiplication by value)"""

@@ -12,7 +12,11 @@ from torch.nn import functional as F
 import models.compress_utils as cu
 from utils.common import add_prefix
 from utils.common import get_device
-from models.transformer import Transformer
+
+import crypten.nn as cnn
+from models.secure_transformer import secure_Transformer
+
+from utils.fix_hook import fix_hook
 
 def _make_divisible(v, divisor, min_value=None):
     """Make channels divisible to divisor.
@@ -49,14 +53,14 @@ class CheckpointModule(nn.Module, metaclass=abc.ABCMeta):
         pass
 
 
-class Identity(nn.Module):
+class Identity(cnn.Module):
     """Module proxy for null op."""
 
     def forward(self, x):
         return x
 
 
-class Narrow(nn.Module):
+class Narrow(cnn.Module):
     """Module proxy for `torch.narrow`."""
 
     def __init__(self, dimension, start, length):
@@ -69,7 +73,7 @@ class Narrow(nn.Module):
         return x.narrow(self.dimension, self.start, self.length)
 
 
-class Swish(nn.Module):
+class Swish(cnn.Module):
     """Swish activation function.
 
     See: https://arxiv.org/abs/1710.05941
@@ -77,7 +81,7 @@ class Swish(nn.Module):
     """
 
     def forward(self, x):
-        return x * torch.sigmoid(x)
+        return x * cnn.Sigmoid(x)
 
 
 class HSwish(object):
@@ -87,10 +91,10 @@ class HSwish(object):
     """
 
     def forward(self, x):
-        return x * F.relu6(x + 3, True).div_(6)
+        return x * cnn.ReLU6(x + 3, True).div_(6)
 
 
-class SqueezeAndExcitation(nn.Module):
+class SqueezeAndExcitation(cnn.Module):
     """Squeeze-and-Excitation module.
 
     See: https://arxiv.org/abs/1709.01507
@@ -102,14 +106,14 @@ class SqueezeAndExcitation(nn.Module):
         self.n_feature = n_feature
         self.n_hidden = n_hidden
         self.spatial_dims = spatial_dims
-        self.se_reduce = nn.Conv2d(n_feature, n_hidden, 1, bias=True)
-        self.se_expand = nn.Conv2d(n_hidden, n_feature, 1, bias=True)
+        self.se_reduce = cnn.Conv2d(n_feature, n_hidden, 1, bias=True)
+        self.se_expand = cnn.Conv2d(n_hidden, n_feature, 1, bias=True)
         self.active_fn = active_fn()
 
     def forward(self, x):
         se_tensor = x.mean(self.spatial_dims, keepdim=True)
         se_tensor = self.se_expand(self.active_fn(self.se_reduce(se_tensor)))
-        return torch.sigmoid(se_tensor) * x
+        return cnn.Sigmoid(se_tensor) * x
         # return torch.sigmoid(se_tensor) + x
 
     def __repr__(self):
@@ -118,7 +122,7 @@ class SqueezeAndExcitation(nn.Module):
             self.active_fn)
 
 
-class ConvBNReLU(nn.Sequential):
+class ConvBNReLU(cnn.Sequential):
     """Convolution-BatchNormalization-ActivateFn."""
 
     def __init__(self,
@@ -137,7 +141,7 @@ class ConvBNReLU(nn.Sequential):
         if not padding:
             padding = (kernel_size - 1) // 2
         super(ConvBNReLU, self).__init__(
-            nn.Conv2d(in_planes,
+            cnn.Conv2d(in_planes,
                       out_planes,
                       kernel_size,
                       stride,
@@ -145,10 +149,10 @@ class ConvBNReLU(nn.Sequential):
                       dilation=dilation,
                       groups=groups,
                       bias=False),
-            nn.BatchNorm2d(out_planes, **batch_norm_kwargs), active_fn() if active_fn is not None else Identity())
+            cnn.BatchNorm2d(out_planes, **batch_norm_kwargs), active_fn() if active_fn is not None else Identity())
 
 
-class InvertedResidualChannelsFused(nn.Module):
+class InvertedResidualChannelsFused(cnn.Module):
     """Speedup version of `InvertedResidualChannels` by fusing small kernels.
 
     NOTE: It may consume more GPU memory.
@@ -192,7 +196,7 @@ class InvertedResidualChannelsFused(nn.Module):
             #         and self.output_dim % min(self.input_dim, self.output_dim) == 0)
             group = [x for x in range(1, self.input_dim + 1)
                      if self.input_dim % x == 0 and self.output_dim % x == 0][-1]
-            self.residual = nn.Conv2d(self.input_dim,
+            self.residual = cnn.Conv2d(self.input_dim,
                                       self.output_dim,
                                       kernel_size=1,
                                       stride=self.stride,
@@ -201,10 +205,10 @@ class InvertedResidualChannelsFused(nn.Module):
                                       bias=False)
 
         if self.use_transformer and self.use_res_connect:
-            self.transformer = Transformer(8, inp)
+            self.transformer = secure_Transformer(8, inp)
 
         if self.use_transformer and self.downsampling_transformer and not self.use_res_connect:
-            self.transformer = Transformer(8, inp, oup, downsampling=(stride == 2))
+            self.transformer = secure_Transformer(8, inp, oup, downsampling=(stride == 2))
 
     def _build(self, hidden_dims, kernel_sizes, expand, se_ratio):
         _batch_norm_kwargs = self.batch_norm_kwargs \
@@ -222,7 +226,7 @@ class InvertedResidualChannelsFused(nn.Module):
             expand_conv = Identity()
 
         narrow_start = 0
-        depth_ops = nn.ModuleList()
+        depth_ops = cnn.ModuleList()
         for k, hidden_dim in zip(kernel_sizes, hidden_dims):
             layers = []
             if expand:
@@ -243,11 +247,11 @@ class InvertedResidualChannelsFused(nn.Module):
                            batch_norm_kwargs=_batch_norm_kwargs,
                            active_fn=self.active_fn),
             ])
-            depth_ops.append(nn.Sequential(*layers))
+            depth_ops.append(cnn.Sequential(*layers))
         if hidden_dim_total:
-            project_conv = nn.Sequential(
-                nn.Conv2d(hidden_dim_total, self.output_dim, 1, 1, 0, bias=False),
-                nn.BatchNorm2d(self.output_dim, **_batch_norm_kwargs))
+            project_conv = cnn.Sequential(
+                cnn.Conv2d(hidden_dim_total, self.output_dim, 1, 1, 0, bias=False),
+                cnn.BatchNorm2d(self.output_dim, **_batch_norm_kwargs))
         else:
             project_conv = Identity()
 
@@ -279,7 +283,7 @@ class InvertedResidualChannelsFused(nn.Module):
             assert isinstance(conv_bn_relu, ConvBNReLU)
             conv_bn_relu = list(conv_bn_relu.children())
             _, bn, _ = conv_bn_relu
-            assert isinstance(bn, nn.BatchNorm2d)
+            assert isinstance(bn, cnn.BatchNorm2d)
             name = 'depth_ops.{}.{}.1'.format(i, idx_op)
             name = add_prefix(name, prefix)
             res[name] = bn
@@ -328,7 +332,7 @@ transformer_dict = None
 # transformer_dict4_avg = [33, 0, 0, 1, 0, 0, 0, 0, 0, 3, 0, 0, 31, 35, 33, 0, 5, 27, 0, 0, 1, 0, 9, 3, 24, 26, 0, 31, 36, 0, 0, 0, 39, 0, 0, 28, 25, 0, 2, 22, 33, 35, 29, 34]
 # transformer_dict5_update_downsample = [34, 0, 16, 0, 0, 0, 0, 25, 0, 0, 0, 17, 26, 1, 18, 0, 24, 27, 35, 27, 22, 12, 28, 12, 26, 0, 19, 27, 25, 25, 0, 22, 0, 15, 29, 31, 34, 36, 34, 26, 28, 22, 26, 1, 0, 0, 0, 1, 32, 30, 34, 0, 20, 0, 0, 0,38, 33, 26, 34, 4]
 
-class InvertedResidualChannels(nn.Module):
+class InvertedResidualChannels(cnn.Module):
     """MobiletNetV2 building block."""
 
     def __init__(self,
@@ -373,27 +377,27 @@ class InvertedResidualChannels(nn.Module):
                 hidden_dims = transformer_dict[0]
                 transformer_dict.pop(0)
                 if hidden_dims:
-                    self.transformer = Transformer(hidden_dims, inp)
+                    self.transformer = secure_Transformer(hidden_dims, inp)
                 else:
                     self.transformer = None
             else:
-                self.transformer = Transformer(64, inp)
+                self.transformer = secure_Transformer(64, inp)
         if self.use_transformer and self.downsampling_transformer and not self.use_res_connect:
             if transformer_dict:
                 hidden_dims = transformer_dict[0]
                 transformer_dict.pop(0)
                 if hidden_dims:
-                    self.transformer = Transformer(hidden_dims, inp, oup, downsampling=(stride == 2))
+                    self.transformer = secure_Transformer(hidden_dims, inp, oup, downsampling=(stride == 2))
                 else:
                     self.transformer = None
             else:
-                self.transformer = Transformer(64, inp, oup, downsampling=(stride == 2))
+                self.transformer = secure_Transformer(64, inp, oup, downsampling=(stride == 2))
         if not self.use_res_connect:
             # assert (self.input_dim % min(self.input_dim, self.output_dim) == 0
             #         and self.output_dim % min(self.input_dim, self.output_dim) == 0)
             group = [x for x in range(1, self.input_dim + 1)
                      if self.input_dim % x == 0 and self.output_dim % x == 0][-1]
-            self.residual = nn.Conv2d(self.input_dim,
+            self.residual = cnn.Conv2d(self.input_dim,
                                       self.output_dim,
                                       kernel_size=1,
                                       stride=self.stride,
@@ -401,9 +405,9 @@ class InvertedResidualChannels(nn.Module):
                                       groups=group,
                                       bias=False)
 
-        self.bns = nn.ModuleList()  # used for distill
+        self.bns = cnn.ModuleList()  # used for distill
         for hidden_dim in channels:
-            self.bns.append(nn.BatchNorm2d(hidden_dim, **batch_norm_kwargs))
+            self.bns.append(cnn.BatchNorm2d(hidden_dim, **batch_norm_kwargs))
         self.index = 0  # used for distill
 
     def _build(self, hidden_dims, kernel_sizes, expand):
@@ -411,7 +415,7 @@ class InvertedResidualChannels(nn.Module):
             if self.batch_norm_kwargs is not None else {}
 
         narrow_start = 0
-        ops = nn.ModuleList()
+        ops = cnn.ModuleList()
         for k, hidden_dim in zip(kernel_sizes, hidden_dims):
             layers = []
             if expand:
@@ -439,11 +443,11 @@ class InvertedResidualChannels(nn.Module):
                            batch_norm_kwargs=_batch_norm_kwargs,
                            active_fn=self.active_fn),
                 # pw-linear
-                nn.Conv2d(hidden_dim, self.output_dim, 1, 1, 0, bias=False),
+                cnn.Conv2d(hidden_dim, self.output_dim, 1, 1, 0, bias=False),
                 # nn.BatchNorm2d(oup, **batch_norm_kwargs),
             ])
             ops.append(nn.Sequential(*layers))
-        pw_bn = nn.BatchNorm2d(self.output_dim, **_batch_norm_kwargs)
+        pw_bn = cnn.BatchNorm2d(self.output_dim, **_batch_norm_kwargs)
 
         if not expand and narrow_start != self.input_dim:
             raise ValueError('Part of input are not used')
@@ -546,10 +550,10 @@ class InvertedResidualChannels(nn.Module):
 def get_active_fn(name):
     """Select activation function."""
     active_fn = {
-        'nn.ReLU6': functools.partial(nn.ReLU6, inplace=True),
-        'nn.ReLU': functools.partial(nn.ReLU, inplace=True),
-        'nn.Swish': Swish,
-        'nn.HSwish': HSwish,
+        'cnn.ReLU6': functools.partial(cnn.ReLU6, inplace=True),
+        'cnn.ReLU': functools.partial(cnn.ReLU, inplace=True),
+        'cnn.Swish': Swish,
+        'cnn.HSwish': HSwish,
     }[name]
     return active_fn
 
@@ -564,40 +568,40 @@ def get_block(name):
 
 def init_weights_slimmable(m):
     """Slimmable network style initialization."""
-    if isinstance(m, nn.Conv2d):
-        nn.init.kaiming_normal_(m.weight, mode='fan_out')
+    if isinstance(m, cnn.Conv2d):
+        cnn.init.kaiming_normal_(m.weight, mode='fan_out')
         if m.bias is not None:
-            nn.init.zeros_(m.bias)
-    elif isinstance(m, nn.BatchNorm2d):
-        nn.init.ones_(m.weight)
-        nn.init.zeros_(m.bias)
-    elif isinstance(m, nn.Linear):
-        nn.init.normal_(m.weight, 0, 0.01)
+            cnn.init.zeros_(m.bias)
+    elif isinstance(m, cnn.BatchNorm2d):
+        cnn.init.ones_(m.weight)
+        cnn.init.zeros_(m.bias)
+    elif isinstance(m, cnn.Linear):
+        cnn.init.normal_(m.weight, 0, 0.01)
         if m.bias is not None:
-            nn.init.zeros_(m.bias)
+            cnn.init.zeros_(m.bias)
 
 
 def init_weights_mnas(m):
     """MnasNet style initialization."""
-    if isinstance(m, nn.Conv2d):
+    if isinstance(m, cnn.Conv2d):
         if m.groups == m.in_channels:  # depthwise conv
             fan_out = m.weight[0][0].numel()
         else:
-            _, fan_out = nn.init._calculate_fan_in_and_fan_out(m.weight)
-        gain = nn.init.calculate_gain('relu')
+            _, fan_out = cnn.init._calculate_fan_in_and_fan_out(m.weight)
+        gain = cnn.init.calculate_gain('relu')
         std = gain / math.sqrt(fan_out)
-        nn.init.normal_(m.weight, 0.0, std)
+        cnn.init.normal_(m.weight, 0.0, std)
         if m.bias is not None:
-            nn.init.zeros_(m.bias)
-    elif isinstance(m, nn.BatchNorm2d):
-        nn.init.ones_(m.weight)
-        nn.init.zeros_(m.bias)
-    elif isinstance(m, nn.Linear):
-        _, fan_out = nn.init._calculate_fan_in_and_fan_out(m.weight)
+            cnn.init.zeros_(m.bias)
+    elif isinstance(m, cnn.BatchNorm2d):
+        cnn.init.ones_(m.weight)
+        cnn.init.zeros_(m.bias)
+    elif isinstance(m, cnn.Linear):
+        _, fan_out = cnn.init._calculate_fan_in_and_fan_out(m.weight)
         init_range = 1.0 / np.sqrt(fan_out)
-        nn.init.uniform_(m.weight, -init_range, init_range)
+        cnn.init.uniform_(m.weight, -init_range, init_range)
         if m.bias is not None:
-            nn.init.zeros_(m.bias)
+            cnn.init.zeros_(m.bias)
 
 
 def output_network(model):

@@ -10,7 +10,6 @@ import torch
 from torch import nn, Tensor
 from torch.nn import functional as F
 
-
 class MHAttentionMap(nn.Module):
     """This is a 2D attention module, which only returns the attention softmax (no multiplication by value)"""
 

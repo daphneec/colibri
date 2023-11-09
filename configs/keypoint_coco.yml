@@ -46,7 +46,7 @@ reset_param_method: ~
 
 model: models.hrnet
 model_kwparams: {
-  active_fn: 'nn.ReLU',
+  active_fn: 'cnn.ReLU',
   num_classes: 17,
   width_mult: 1.0,
   round_nearest: 2,
