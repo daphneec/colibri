@@ -294,3 +294,5 @@ def setup_distributed(num_images=None):
         # rate will be negative
         # the smallest integer not less than x
         FLAGS._steps_per_epoch = math.ceil(num_images / FLAGS.batch_size)
+
+

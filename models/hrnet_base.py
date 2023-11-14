@@ -23,7 +23,7 @@ class InvertedResidual(InvertedResidualChannels):
                  stride,
                  expand_ratio=6,
                  kernel_sizes=[3, 5, 7],
-                 active_fn=get_active_fn('nn.ReLU'),
+                 active_fn=get_active_fn('cnn.ReLU'),
                  batch_norm_kwargs={'momentum': 0.1, 'eps': 1e-5}):
 
         def _expand_ratio_to_hiddens(expand_ratio):
@@ -75,7 +75,7 @@ class BasicBlock(nn.Module):
                  expand_ratio=4,
                  kernel_sizes=[3, 5, 7],
                  batch_norm_kwargs={'momentum': 0.1, 'eps': 1e-5},
-                 active_fn=get_active_fn('nn.ReLU6')):
+                 active_fn=get_active_fn('cnn.ReLU6')):
         super(BasicBlock, self).__init__()
         self.conv1 = block(
             inplanes,

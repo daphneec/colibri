@@ -29,8 +29,7 @@ from mmseg.validation import SegVal, keypoint_val
 
 
 import crypten.nn as cnn
-from utils.fix_hook import fix_hook
-
+import crypten
 def shrink_model(model_wrapper,
                  ema,
                  optimizer,

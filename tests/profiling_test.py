@@ -1,23 +1,85 @@
-"""Modified from https://github.com/JiahuiYu/slimmable_networks/blob/master/utils/model_profiling.py"""
+#!/usr/bin/env python3
+#   by daphneec
 import logging
 import functools
 import numpy as np
 import time
 import torch
 import torch.nn as nn
-#import models.mobilenet_base as mb
-#import models.hrnet as hr
-#import models.hrnet_base as hrb
-#import models.transformer as transformer
-from utils import distributed as udist
-
+import crypten
 import crypten.nn as cnn
-import models.secure_transformer as secure_transformer
-import models.secure_mobilenet_base as smb
-import models.secure_hrnet as shr
-import models.secure_hrnet_base as shrb
-
+import os
+import subprocess
+import sys
+sys.path.append('/Users/daphneechabal/Library/CloudStorage/OneDrive-UvA/WORK/3.NAS TRANSFORMER SECURE PAPER/securehrnas') 
+from utils import distributed as udist
 from utils.fix_hook import fix_hook
+from utils import optim
+from utils import prune
+
+import models.secure_transformer as secure_transformer
+import models.secure_mobilenet_base as mb
+import models.secure_hrnet as hr
+import models.secure_hrnet_base as hrb
+import secure_common as mc
+
+
+def shrink_model(model_wrapper,
+                 ema,
+                 optimizer,
+                 prune_info,
+                 threshold=1e-3,
+                 ema_only=False):
+    r"""Dynamic network shrinkage to discard dead atomic blocks.
+
+    Args:
+        model_wrapper: model to be shrinked.
+        ema: An instance of `ExponentialMovingAverage`, could be None.
+        optimizer: Global optimizer.
+        prune_info: An instance of `PruneInfo`, could be None.
+        threshold: A small enough constant.
+        ema_only: If `True`, regard an atomic block as dead only when
+            `$$\hat{alpha} \le threshold$$`. Otherwise use both current value
+            and momentum version.
+    """
+    model = mc.unwrap_model(model_wrapper)
+    for block_name, block in model.get_named_block_list().items():  # inverted residual blocks
+        assert isinstance(block, mb.InvertedResidualChannels)
+        masks = [
+            bn.weight.detach().abs() > threshold
+            for bn in block.get_depthwise_bn()
+        ]
+        if ema is not None:
+            masks_ema = [
+                ema.average('{}.{}.weight'.format(
+                    block_name, name)).detach().abs() > threshold
+                for name in block.get_named_depthwise_bn().keys()
+            ]
+            if not ema_only:
+                masks = [
+                    mask0 | mask1 for mask0, mask1 in zip(masks, masks_ema)
+                ]
+            else:
+                masks = masks_ema
+        block.compress_by_mask(masks,
+                               ema=ema,
+                               optimizer=optimizer,
+                               prune_info=prune_info,
+                               prefix=block_name,
+                               verbose=False)
+
+    if optimizer is not None:
+        assert set(optimizer.param_groups[0]['params']) == set(
+            model.parameters())
+    secure_model = cnn.from_pytorch(model, inp)
+    mc.model_profiling(model,
+                       28,
+                       28,
+                       num_forwards=0,
+                       verbose=False)
+    if udist.is_master():
+        logging.info('Model Shrink to FLOPS: {}'.format(secure_model.n_macs))
+        logging.info('Current model: {}'.format(mb.output_network(secure_model)))
 
 model_profiling_hooks = []
 model_profiling_speed_hooks = []
@@ -26,24 +88,6 @@ name_space = 95
 params_space = 15
 macs_space = 15
 seconds_space = 15
-
-
-class Timer(object):
-
-    def __init__(self, verbose=False):
-        self.verbose = verbose
-        self.start = None
-        self.end = None
-
-    def __enter__(self):
-        self.start = time.time()
-        return self
-
-    def __exit__(self, *args):
-        self.end = time.time()
-        self.time = self.end - self.start
-        if self.verbose:
-            print('Elapsed time: %f ms.' % self.time)
 
 
 def get_params(self):
@@ -127,14 +171,14 @@ def module_profiling(self, input, output, num_forwards, verbose):
         self.n_params = 0
         self.n_seconds = _run_forward(self, input)
         self.name = self.__repr__()
-    elif isinstance(self, smb.SqueezeAndExcitation):
+    elif isinstance(self, mb.SqueezeAndExcitation):
         self.n_macs = ins[1] * ins[2] * ins[3] * ins[0]
         self.n_params = 0
         self.n_seconds = 0
         add_sub(self, self.se_reduce)
         add_sub(self, self.se_expand)
         self.name = self.__repr__()
-    elif isinstance(self, smb.InvertedResidualChannels):
+    elif isinstance(self, mb.InvertedResidualChannels):
         self.n_macs = 0
         self.n_params = 0
         self.n_seconds = 0
@@ -148,7 +192,7 @@ def module_profiling(self, input, output, num_forwards, verbose):
         if self.use_transformer and self.downsampling_transformer and not self.use_res_connect:
             add_sub(self, self.transformer)
         self.name = self.__repr__()
-    elif isinstance(self, smb.InvertedResidualChannelsFused):
+    elif isinstance(self, mb.InvertedResidualChannelsFused):
         self.n_macs = 0
         self.n_params = 0
         self.n_seconds = 0
@@ -158,14 +202,14 @@ def module_profiling(self, input, output, num_forwards, verbose):
         add_sub(self, self.project_conv)
         add_sub(self, self.se_op)
         self.name = self.__repr__()
-    elif isinstance(self, shr.ParallelModule):
+    elif isinstance(self, hr.ParallelModule):
         self.n_macs = 0
         self.n_params = 0
         self.n_seconds = 0
         for op in self.branches:
             add_sub(self, op)
         self.name = self.__repr__()
-    elif isinstance(self, shr.FuseModule):
+    elif isinstance(self, hr.FuseModule):
         self.n_macs = 0
         self.n_params = 0
         self.n_seconds = 0
@@ -173,7 +217,7 @@ def module_profiling(self, input, output, num_forwards, verbose):
             for op in ops:
                 add_sub(self, op)
         self.name = self.__repr__()
-    elif isinstance(self, shr.HeadModule):
+    elif isinstance(self, hr.HeadModule):
         self.n_macs = 0
         self.n_params = 0
         self.n_seconds = 0
@@ -216,7 +260,7 @@ def module_profiling(self, input, output, num_forwards, verbose):
         self.n_macs += 2 * input[0].shape[0] * input[1].shape[0] * input[0].shape[2] + \
             4 * input[0].shape[0] * input[0].shape[2] * input[0].shape[2]
         self.name = self.__repr__()
-    elif isinstance(self, shrb.HighResolutionModule):
+    elif isinstance(self, hrb.HighResolutionModule):
         self.n_macs = 0
         self.n_params = 0
         self.n_seconds = 0
@@ -225,7 +269,7 @@ def module_profiling(self, input, output, num_forwards, verbose):
         for op in self.fuse_layers:
             add_sub(self, op)
         self.name = self.__repr__()
-    elif isinstance(self, shrb.BasicBlock):
+    elif isinstance(self, hrb.BasicBlock):
         self.n_macs = 0
         self.n_params = 0
         self.n_seconds = 0
@@ -233,7 +277,7 @@ def module_profiling(self, input, output, num_forwards, verbose):
         if self.downsample is not None:
             add_sub(self, self.downsample)
         self.name = self.__repr__()
-    elif isinstance(self, shrb.Bottleneck):
+    elif isinstance(self, hrb.Bottleneck):
         self.n_macs = 0
         self.n_params = 0
         self.n_seconds = 0
@@ -262,9 +306,9 @@ def module_profiling(self, input, output, num_forwards, verbose):
             nn.Sequential,
             nn.ReLU6,
             nn.ReLU,
-            smb.Swish,
-            smb.Narrow,
-            smb.Identity,
+            mb.Swish,
+            mb.Narrow,
+            mb.Identity,
             cnn.MaxPool2d,
             nn.modules.padding.ZeroPad2d,
             cnn.Sigmoid,
@@ -325,11 +369,11 @@ def model_profiling(model,
 
     """
     model.eval()
-    data = torch.rand(batch, channel, height, width)
+    data = crypten.rand(batch, channel, height, width)
     origin_device = next(model.parameters()).device
-    device = torch.device("cuda" if use_cuda else "cpu")
-    model = model.to(device)
-    data = data.to(device)
+    #device = torch.device('mps')#"cuda" if use_cuda else "cpu")
+    #model = model.to(device)
+    #data = data.to(device)
     model.apply(lambda m: add_profiling_hooks(m, num_forwards, verbose=verbose))
     if verbose:
         logging.info('Item'.ljust(name_space, ' ') +
@@ -350,3 +394,48 @@ def model_profiling(model,
     remove_profiling_hooks()
     model = model.to(origin_device)
     return model.n_macs, model.n_params
+
+
+def profiling(model, use_cuda):
+    """Profiling on either gpu or cpu."""
+    if udist.is_master():
+        logging.info('Start model profiling, use_cuda:{}.'.format(use_cuda))
+    model_profiling(model,
+                    28,
+                    28,
+                    verbose=True)
+
+
+
+class DummyNetwork(cnn.Module):
+
+    def __init__(self):
+        super(DummyNetwork, self).__init__()
+        self.conv1 = cnn.Conv2d(1, 16, 3, padding=1)  # Increased output channels and adjusted kernel size
+        self.conv2 = cnn.Conv2d(16, 32, 3, padding=1)  # Added another convolutional layer
+        self.pool = cnn.MaxPool2d(2, 2)
+        self.relu = cnn.ReLU()
+        #self.act1 = mb.SqueezeAndExcitation(2,2, active_fn=cnn.ReLU)
+
+    def forward(self, x):
+        x = self.relu(self.conv1(x))
+        x = self.pool(x)
+        x = self.relu(self.conv2(x))
+        x = self.pool(x)
+        #x = self.act1(x)
+        return x
+
+
+if __name__ == "__main__":
+    # Prepare crypten
+    crypten.init()
+
+    # Create the network and encrypt it
+    fix_hook(cnn.Module)  
+    dummy_network = DummyNetwork().encrypt()
+    dummy_input = crypten.randn(1, 1, 28, 28)
+    # Encrypt it and add the profiling thingies
+    
+    #dummy_network.forward(dummy_input)
+    #a = cnn.from_pytorch(dummy_network, dummy_input)
+    model_profiling(dummy_network, 28, 28)

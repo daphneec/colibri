@@ -162,7 +162,7 @@ class FuseModule(cnn.Module):
                  expand_ratio=6,
                  kernel_sizes=[3, 5, 7],
                  batch_norm_kwargs=None,
-                 active_fn=get_active_fn('nn.ReLU6'),
+                 active_fn=get_active_fn('cnn.ReLU6'),
                  use_hr_format=False,
                  only_fuse_neighbor=True,
                  directly_downsample=True):
@@ -365,7 +365,7 @@ class HeadModule(cnn.Module):
                  expand_ratio=6,
                  kernel_sizes=[3, 5, 7],
                  batch_norm_kwargs=None,
-                 active_fn=get_active_fn('nn.ReLU6'),
+                 active_fn=get_active_fn('cnn.ReLU6'),
                  concat_head_for_cls=False):
         super(HeadModule, self).__init__()
 

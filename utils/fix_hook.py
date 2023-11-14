@@ -147,3 +147,8 @@ def fix_hook(ty):
     except AttributeError:
         ty._unhooked_forward = cnn.Module.forward
         ty.forward = _forward_override
+    try:
+        getattr(ty, "apply")
+        print("NOTE: fix_hook(): Not fixing `apply` because it already exists")
+    except AttributeError:
+        ty.apply = ty._apply
