@@ -87,7 +87,7 @@ class BasicBlock(cnn.Module):
             batch_norm_kwargs=batch_norm_kwargs,
             active_fn=active_fn)
         self.bn1 = cnn.BatchNorm2d(planes, momentum=BN_MOMENTUM)
-        self.relu = cnn.ReLU(inplace=True)
+        self.relu = cnn.ReLU()
         # self.conv2 = block(
         #     planes,
         #     planes,
@@ -133,7 +133,7 @@ class Bottleneck(cnn.Module):
                                bias=False)
         self.bn3 = cnn.BatchNorm2d(planes * self.expansion,
                                   momentum=BN_MOMENTUM)
-        self.relu = cnn.ReLU(inplace=True)
+        self.relu = cnn.ReLU()
         self.downsample = downsample
         self.stride = stride
 
@@ -358,7 +358,7 @@ class HighResolutionNetBase(cnn.Module):
         self.conv2 = cnn.Conv2d(self.input_channel, self.input_channel, kernel_size=3, stride=2, padding=1,
                                bias=False)
         self.bn2 = cnn.BatchNorm2d(self.input_channel, **batch_norm_kwargs)
-        self.relu = cnn.ReLU(inplace=True)
+        self.relu = cnn.ReLU()
 
         self.stage1_cfg = STAGE1
         num_channels = self.stage1_cfg['NUM_CHANNELS'][0]
@@ -432,7 +432,7 @@ class HighResolutionNetBase(cnn.Module):
                           out_channels,
                           2),
                 # nn.BatchNorm2d(out_channels, momentum=BN_MOMENTUM),
-                cnn.ReLU(inplace=True)
+                cnn.ReLU()
             )
 
             downsamp_modules.append(downsamp_module)
@@ -447,7 +447,7 @@ class HighResolutionNetBase(cnn.Module):
                 padding=0
             ),
             cnn.BatchNorm2d(self.last_channel, momentum=BN_MOMENTUM),
-            cnn.ReLU(inplace=True)
+            cnn.ReLU()
         )
 
         return incre_modules, downsamp_modules, final_layer
@@ -470,7 +470,7 @@ class HighResolutionNetBase(cnn.Module):
                                   bias=False),
                         cnn.BatchNorm2d(
                             num_channels_cur_layer[i], momentum=BN_MOMENTUM),
-                        cnn.ReLU(inplace=True)))
+                        cnn.ReLU()))
                 else:
                     transition_layers.append(None)
             else:
@@ -483,7 +483,7 @@ class HighResolutionNetBase(cnn.Module):
                         cnn.Conv2d(
                             inchannels, outchannels, 3, 2, 1, bias=False),
                         cnn.BatchNorm2d(outchannels, momentum=BN_MOMENTUM),
-                        cnn.ReLU(inplace=True)))
+                        cnn.ReLU()))
                 transition_layers.append(nn.Sequential(*conv3x3s))
 
         return cnn.ModuleList(transition_layers)

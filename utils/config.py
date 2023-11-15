@@ -8,6 +8,7 @@ import re
 import yaml
 
 # singletone
+CPU_OVERRIDE = True
 FLAGS = None
 _ENV_EXPAND = {}
 
@@ -213,4 +214,4 @@ def app():
         return FLAGS
 
 
-#app()
+app()

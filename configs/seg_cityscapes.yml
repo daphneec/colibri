@@ -51,7 +51,7 @@ reset_param_method: mnas
 
 model: models.hrnet
 model_kwparams: {
-  active_fn: 'cnn.ReLU',
+  active_fn: 'nn.ReLU',
   num_classes: 19,
   width_mult: 1.0,
   round_nearest: 2,
