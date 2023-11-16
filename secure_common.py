@@ -8,18 +8,14 @@ import torch
 import torch.distributed as dist
 from torch.utils.tensorboard import SummaryWriter
 
-from utils import distributed as udist
-from utils.model_profiling import model_profiling
+from utils import secure_distributed as udist
+from utils.secure_model_profiling import model_profiling
 from utils.config import CPU_OVERRIDE, FLAGS
 from utils.meters import ScalarMeter
 from utils.meters import flush_scalar_meters
 from utils.common import get_params_by_name
 
-import models.secure_mobilenet_base as smb
 import torch.nn.functional as F
-
-import crypten.nn as cnn
-from utils.fix_hook import fix_hook
 
 summary_writer = None
 
@@ -45,7 +41,7 @@ class SummaryWriterManager(object):
 
 def setup_ema(model):
     """Setup EMA for model's weights."""
-    from utils import optim
+    from utils import secure_optim as optim
 
     ema = None
     if FLAGS.moving_average_decay > 0.0:

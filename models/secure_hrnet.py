@@ -2,12 +2,14 @@ import numbers
 import collections
 import logging
 import torch
+import math
 from torch import nn
 from torch.nn import functional as F
 from mmseg.utils import resize
 import json
-from utils import distributed as udist
+from utils import secure_distributed as udist
 
+import crypten
 import crypten.nn as cnn
 from models.secure_mobilenet_base import _make_divisible
 from models.secure_mobilenet_base import ConvBNReLU
@@ -18,6 +20,32 @@ __all__ = ['HighResolutionNet']
 
 checkpoint_kwparams = None
 # checkpoint_kwparams = json.load(open('checkpoint.json'))
+
+
+class UpsampleNearest(cnn.Module):
+    """
+        Crypten module for upsampling nearest tensors.
+
+        This only works for nearest because we don't have to worry about the gnarly encrypted case;
+        since we're only interpolating to values we've seen in a deterministic way, we can be sure
+        that the interpolated values are correctly shared.
+    """
+
+    _scale: int
+
+    def __init__(self, scale_factor):
+        super(UpsampleNearest, self).__init__()
+        self._scale = scale_factor
+
+    def forward(self, x):
+        """
+            Runs a forward pass by running the interpolation on the input tensor.
+        """
+
+        # x._tensor = torch.nn.functional.interpolate(x._tensor, self._scale)
+        print(dict(x._tensor))
+        return x
+
 
 
 class InvertedResidual(InvertedResidualChannels):
@@ -670,7 +698,7 @@ class HighResolutionNet(cnn.Module):
                 mode='bilinear',
                 align_corners=self.align_corners) for x in inputs
         ]
-        inputs = torch.cat(upsampled_inputs, dim=1)
+        inputs = crypten.cat(upsampled_inputs, dim=1)
         inputs = self.transform(inputs)
         return inputs
 

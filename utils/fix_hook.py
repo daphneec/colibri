@@ -4,7 +4,7 @@
 # Created:
 #   09 Nov 2023, 10:41:00
 # Last edited:
-#   09 Nov 2023, 12:13:59
+#   16 Nov 2023, 15:12:15
 # Auto updated?
 #   Yes
 #
@@ -58,6 +58,22 @@ class Hook:
         # Hit some warnings about stuff unimplemented
         if self.always_call:
             print("WARNING: cnn.Module.register_forward_hook(): Asked to add a forward hook with `always_call` set, but the custom Crypten implementation does nothing with this.", file=sys.stderr)
+
+
+
+def _mean(tensor, *args, **kwargs):
+    """
+        Computes the mean of the values in the given tensor.
+    """
+
+    tensor.mean(*args, **kwargs)
+
+def _sum(tensor, *args, **kwargs):
+    """
+        Computes the sum of the values in the given tensor.
+    """
+
+    tensor.sum(*args, **kwargs)
 
 
 
@@ -121,6 +137,31 @@ def _forward_override(self, *args, **kwargs):
     # Done
     return x
 
+
+
+def fix_lib(lib):
+    """
+        Fixes stuff like `mean` and `sum` in the given Crypten library module.
+
+        Use it like so:
+        ```python
+        fix_lib(crypten)
+        ```
+    """
+
+    # Inject mean if it does not exist
+    try:
+        getattr(lib, 'mean')
+        print("NOTE: fix_lib(): Not fixing `mean` for given library as it apparently already exists")
+    except AttributeError:
+        lib.mean = _mean
+
+    # Inject sum if it does not exist
+    try:
+        getattr(lib, 'sum')
+        print("NOTE: fix_lib(): Not fixing `sum` for given library as it apparently already exists")
+    except AttributeError:
+        lib.sum = _sum
 
 
 def fix_hook(ty):
