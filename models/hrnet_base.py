@@ -75,7 +75,7 @@ class BasicBlock(nn.Module):
                  expand_ratio=4,
                  kernel_sizes=[3, 5, 7],
                  batch_norm_kwargs={'momentum': 0.1, 'eps': 1e-5},
-                 active_fn=get_active_fn('cnn.ReLU6')):
+                 active_fn=get_active_fn('nn.ReLU6')):
         super(BasicBlock, self).__init__()
         self.conv1 = block(
             inplanes,

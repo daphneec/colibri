@@ -11,7 +11,7 @@ import crypten.nn as cnn
 import os
 import subprocess
 import sys
-sys.path.append('/Users/daphneechabal/Library/CloudStorage/OneDrive-UvA/WORK/3.NAS TRANSFORMER SECURE PAPER/securehrnas') 
+sys.path.append('.') 
 from utils import distributed as udist
 from utils.fix_hook import fix_hook
 from utils import optim

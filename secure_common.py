@@ -10,7 +10,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 from utils import distributed as udist
 from utils.model_profiling import model_profiling
-from utils.config import FLAGS
+from utils.config import CPU_OVERRIDE, FLAGS
 from utils.meters import ScalarMeter
 from utils.meters import flush_scalar_meters
 from utils.common import get_params_by_name
@@ -226,9 +226,15 @@ def get_model():
         if udist.is_master():
             logging.info('Init model by: {}'.format(init_method))
     if FLAGS.use_distributed:
-        model_wrapper = udist.AllReduceDistributedDataParallel(model.cuda())
+        if not CPU_OVERRIDE:
+            model_wrapper = udist.AllReduceDistributedDataParallel(model.cuda())
+        else:
+            model_wrapper = udist.AllReduceDistributedDataParallel(model)
     else:
-        model_wrapper = torch.nn.DataParallel(model).cuda()
+        if not CPU_OVERRIDE:
+            model_wrapper = torch.nn.DataParallel(model).cuda()
+        else:
+            model_wrapper = torch.nn.DataParallel(model)
     return model, model_wrapper
 
 
@@ -278,8 +284,11 @@ def setup_distributed(num_images=None):
         if FLAGS.bn_calibration:
             FLAGS._loader_batch_size_calib = \
                 FLAGS.bn_calibration_per_gpu_batch_size
-        FLAGS.data_loader_workers = round(FLAGS.data_loader_workers
-                                          / udist.get_local_size())  # Per_gpu_workers(the function will return the nearest integer
+        if not CPU_OVERRIDE:
+            FLAGS.data_loader_workers = round(FLAGS.data_loader_workers
+                                            / udist.get_local_size())  # Per_gpu_workers(the function will return the nearest integer
+        else:
+            FLAGS.data_loader_workers = round(FLAGS.data_loader_workers)
     else:
         count = torch.cuda.device_count()
         FLAGS.batch_size = count * FLAGS.per_gpu_batch_size

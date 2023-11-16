@@ -33,7 +33,7 @@ def _make_divisible(v, divisor, min_value=None):
     return new_v
 
 
-class CheckpointModule(nn.Module, metaclass=abc.ABCMeta):
+class CheckpointModule(cnn.Module, metaclass=abc.ABCMeta):
     """Discard mid-result using checkpoint."""
 
     def __init__(self, use_checkpoint=True):
@@ -89,7 +89,7 @@ class HSwish(object):
     """
 
     def forward(self, x):
-        return x * cnn.ReLU6(x + 3, True).div_(6)
+        return x * cnn.ReLU6(x + 3, False).div_(6)
 
 
 class SqueezeAndExcitation(cnn.Module):
@@ -444,7 +444,7 @@ class InvertedResidualChannels(cnn.Module):
                 cnn.Conv2d(hidden_dim, self.output_dim, 1, 1, 0, bias=False),
                 # nn.BatchNorm2d(oup, **batch_norm_kwargs),
             ])
-            ops.append(nn.Sequential(*layers))
+            ops.append(cnn.Sequential(*layers))
         pw_bn = cnn.BatchNorm2d(self.output_dim, **_batch_norm_kwargs)
 
         if not expand and narrow_start != self.input_dim:
@@ -469,7 +469,7 @@ class InvertedResidualChannels(cnn.Module):
             assert isinstance(conv_bn_relu, ConvBNReLU)
             conv_bn_relu = list(conv_bn_relu.children())
             _, bn, _ = conv_bn_relu
-            assert isinstance(bn, nn.BatchNorm2d)
+            assert isinstance(bn, cnn.BatchNorm2d)
             name = 'ops.{}.{}.1'.format(i, idx_op)
             name = add_prefix(name, prefix)
             res[name] = bn
@@ -548,8 +548,8 @@ class InvertedResidualChannels(cnn.Module):
 def get_active_fn(name):
     """Select activation function."""
     active_fn = {
-        'cnn.ReLU6': functools.partial(cnn.ReLU6, inplace=True),
-        'cnn.ReLU': functools.partial(cnn.ReLU, inplace=True),
+        'cnn.ReLU6': functools.partial(cnn.ReLU6),
+        'cnn.ReLU': functools.partial(cnn.ReLU),
         'cnn.Swish': Swish,
         'cnn.HSwish': HSwish,
     }[name]
