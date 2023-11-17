@@ -1,20 +1,21 @@
-import numbers
 import collections
 import logging
-import torch
 import math
+from mmseg.utils import resize
+import numbers
+import numpy as np
+import torch
 from torch import nn
 from torch.nn import functional as F
-from mmseg.utils import resize
-import json
 from utils import secure_distributed as udist
+import typing
 
 import crypten
 import crypten.nn as cnn
 from models.secure_mobilenet_base import _make_divisible
 from models.secure_mobilenet_base import ConvBNReLU
 from models.secure_mobilenet_base import get_active_fn
-from models.secure_mobilenet_base import InvertedResidualChannels, InvertedResidualChannelsFused
+from models.secure_mobilenet_base import InvertedResidualChannels
 
 __all__ = ['HighResolutionNet']
 
@@ -31,10 +32,18 @@ class UpsampleNearest(cnn.Module):
         that the interpolated values are correctly shared.
     """
 
-    _scale: int
+    _scale: typing.Union[typing.Tuple[int], typing.Tuple[int, int], typing.Tuple[int, int, int]]
 
-    def __init__(self, scale_factor):
+    def __init__(self, scale_factor: typing.Union[int, typing.Tuple[int], typing.Tuple[int, int], typing.Tuple[int, int, int]]):
         super(UpsampleNearest, self).__init__()
+
+        # Only accept scale factors of certain shapes
+        if type(scale_factor) == int:
+            scale_factor = tuple([scale_factor])
+        if len(scale_factor) != 1 and len(scale_factor) != 2 and len(scale_factor) != 3:
+            raise ValueError("UpsampleNearest(): Can only accept scale factors in 1, 2 or 3 dimensions.")
+
+        # Convert the scale to match the tensor definition
         self._scale = scale_factor
 
     def forward(self, x):
@@ -42,9 +51,47 @@ class UpsampleNearest(cnn.Module):
             Runs a forward pass by running the interpolation on the input tensor.
         """
 
-        # x._tensor = torch.nn.functional.interpolate(x._tensor, self._scale)
-        print(dict(x._tensor))
-        return x
+        # Compute the number of actual/scalable dimensions of the input (1-3)
+        n_dims = len(self._scale)
+
+        # Only accept tensors of certain shapes
+        # NOTE: The given X has two bonus dimensions, which are the minibatches and channels before we get to the actual dimensions. As such, number of x dimensions is 3-5.
+        if len(x.shape) < 3 or len(x.shape) > 5:
+            raise ValueError(f"UpsampleNearest.forward(): Can only upsample tensors with 3, 4 or 5 dimensions (see https://pytorch.org/docs/stable/generated/torch.nn.Upsample.html)")
+        if len(x.shape) != 2 + n_dims:
+            raise ValueError(f"UpsampleNearest.forward(): Can only upsample tensors with matching dimensions to scale factor: got scale factor of {n_dims} dimensions, got tensor of {len(x.shape) - 2} scalable dimensions (see https://pytorch.org/docs/stable/generated/torch.nn.Upsample.html)")
+
+        # We stretch the x using repeat(), but be warned; this is different from numpy repeat! E.g.,
+        # (n_dims = 1, scale factor 2)
+        # [[[4, 5,      ->    [[[4, 5, 4, 5,        # Note this repeat sucks because it doesn't repeat values but rows
+        #    6, 7]]]             6, 7, 6, 7]]]
+        new_x = x.repeat((1, 1) + self._scale)
+
+        # But fear not, since now comes the trick: we use `CrypTensor.index_select()` magic to re-orden the output array along the "real" dimensions, e.g.,
+        # (n_dims = 1, scale factor 2)
+        # [[[4, 5, 4, 5,      ->    [[[4, 4, 5, 5,
+        #    6, 7, 6, 7]]]             6 ,6, 7, 7]]]
+        for dim in range(n_dims):
+            # Compute the index vector, which determines the new order of the array along this axis
+            # This is built as, for every index in the old x, generate SCALE new indices, which are distanced SCALE spaces from each other; e.g.,
+            # (x dim size 2, scale factor 2)
+            # [0, 2, 1, 3]
+            # (x dim size 2, scale factor 4)
+            # [0, 2, 4, 6, 1, 3, 5, 7]
+            # (x dim size 4, scale factor 2)
+            # [0, 4, 1, 5, 2, 6, 3, 7]
+            # (x dim size 3, scale factor 4)
+            # [0, 3, 6, 9, 1, 4, 7, 10, 2, 5, 8, 11]
+            indices = []
+            for i in range(x.shape[2 + dim]):
+                indices += [i + x.shape[2 + dim] * j for j in range(self._scale[dim])]
+            print(indices)
+
+            # Re-orden the new X accordingly
+            new_x = new_x.index_select(dim=2+dim, index=torch.tensor(indices))
+
+        # Done!
+        return new_x
 
 
 
@@ -235,7 +282,7 @@ class FuseModule(cnn.Module):
                             active_fn=self.active_fn if not use_hr_format else None,
                             kernel_size=1  # for hr format
                         ),
-                        nn.Upsample(scale_factor=2 ** (j - i), mode='nearest')))
+                        UpsampleNearest(scale_factor=2 ** (j - i))))
                 elif j == i:
                     if use_hr_format and in_channels[j] == out_channels[i]:
                         fuse_layer.append(None)
