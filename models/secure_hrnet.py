@@ -38,12 +38,14 @@ class UpsampleNearest(cnn.Module):
         super(UpsampleNearest, self).__init__()
 
         # Only accept scale factors of certain shapes
-        if type(scale_factor) == int:
-            scale_factor = tuple([scale_factor])
-        if len(scale_factor) != 1 and len(scale_factor) != 2 and len(scale_factor) != 3:
-            raise ValueError("UpsampleNearest(): Can only accept scale factors in 1, 2 or 3 dimensions.")
+        if type(scale_factor) is tuple or type(scale_factor) is list:
+            scale_factor = tuple([int(f) for f in scale_factor])
+            if len(scale_factor) != 1 and len(scale_factor) != 2 and len(scale_factor) != 3:
+                raise ValueError("UpsampleNearest(): Can only accept scale factors in 1, 2 or 3 dimensions.")
+        elif type(scale_factor) is not int:
+            raise TypeError("UpsampleNearest(): Scale factor must either be an int or a sequence (tuple or list)")
 
-        # Convert the scale to match the tensor definition
+        # Store locally
         self._scale = scale_factor
 
     def forward(self, x):
@@ -51,29 +53,33 @@ class UpsampleNearest(cnn.Module):
             Runs a forward pass by running the interpolation on the input tensor.
         """
 
-        # Compute the number of actual/scalable dimensions of the input (1-3)
-        n_dims = len(self._scale)
-
         # Only accept tensors of certain shapes
-        # NOTE: The given X has two bonus dimensions, which are the minibatches and channels before we get to the actual dimensions. As such, number of x dimensions is 3-5.
         if len(x.shape) < 3 or len(x.shape) > 5:
             raise ValueError(f"UpsampleNearest.forward(): Can only upsample tensors with 3, 4 or 5 dimensions (see https://pytorch.org/docs/stable/generated/torch.nn.Upsample.html)")
-        if len(x.shape) != 2 + n_dims:
+
+        # Resolve the scale factor to a tuple with the correct number of dimensions
+        # NOTE: The given X has two bonus dimensions, which are the minibatches and channels before we get to the actual dimensions. As such, number of x dimensions is 3-5, but we only scale 1-3 dimensions (the latter ones).
+        n_dims = len(x.shape) - 2
+        scale = self._scale
+        if type(scale) is int:
+            scale = tuple([scale for _ in range(n_dims)])
+        elif len(x.shape) != 2 + n_dims:
             raise ValueError(f"UpsampleNearest.forward(): Can only upsample tensors with matching dimensions to scale factor: got scale factor of {n_dims} dimensions, got tensor of {len(x.shape) - 2} scalable dimensions (see https://pytorch.org/docs/stable/generated/torch.nn.Upsample.html)")
 
         # We stretch the x using repeat(), but be warned; this is different from numpy repeat! E.g.,
         # (n_dims = 1, scale factor 2)
         # [[[4, 5,      ->    [[[4, 5, 4, 5,        # Note this repeat sucks because it doesn't repeat values but rows
         #    6, 7]]]             6, 7, 6, 7]]]
-        new_x = x.repeat((1, 1) + self._scale)
+        new_x = x.repeat((1, 1) + scale)
 
         # But fear not, since now comes the trick: we use `CrypTensor.index_select()` magic to re-orden the output array along the "real" dimensions, e.g.,
         # (n_dims = 1, scale factor 2)
         # [[[4, 5, 4, 5,      ->    [[[4, 4, 5, 5,
         #    6, 7, 6, 7]]]             6 ,6, 7, 7]]]
+        # Note that we only reorden "real" dimensions, not the two bonus dimensions
         for dim in range(n_dims):
-            # Compute the index vector, which determines the new order of the array along this axis
-            # This is built as, for every index in the old x, generate SCALE new indices, which are distanced SCALE spaces from each other; e.g.,
+            # Compute the index vector, which determines the new order of the tensor along this (=`dim`) axis
+            # This is built as, for every index in the old x, generate SCALE new indices, which are distanced `x.shape[dim]` spaces from each other; e.g.,
             # (x dim size 2, scale factor 2)
             # [0, 2, 1, 3]
             # (x dim size 2, scale factor 4)
@@ -82,10 +88,14 @@ class UpsampleNearest(cnn.Module):
             # [0, 4, 1, 5, 2, 6, 3, 7]
             # (x dim size 3, scale factor 4)
             # [0, 3, 6, 9, 1, 4, 7, 10, 2, 5, 8, 11]
+            # 
+            # To illustrate using this list of indices, consider:
+            # (x dim size 2, scale factor 2)
+            # [[[4, 5, 4, 5,      .index_select([0, 2, 1, 3])    [[[4, 4, 5, 5,     # Note that we have swapped the rows according to the indices!
+            #    6, 7, 6, 7]]]                                      6, 6, 7, 7]]]
             indices = []
             for i in range(x.shape[2 + dim]):
-                indices += [i + x.shape[2 + dim] * j for j in range(self._scale[dim])]
-            print(indices)
+                indices += [i + x.shape[2 + dim] * j for j in range(scale[dim])]
 
             # Re-orden the new X accordingly
             new_x = new_x.index_select(dim=2+dim, index=torch.tensor(indices))
