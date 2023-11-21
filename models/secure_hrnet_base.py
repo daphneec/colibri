@@ -96,7 +96,7 @@ class BasicBlock(cnn.Module):
         #     stride=1,
         #     batch_norm_kwargs=batch_norm_kwargs,
         #     active_fn=active_fn)
-        # self.bn2 = nn.BatchNorm2d(planes, momentum=BN_MOMENTUM)
+        # self.bn2 = cnn.BatchNorm2d(planes, momentum=BN_MOMENTUM)
         self.downsample = downsample
         self.stride = stride
 
@@ -160,7 +160,7 @@ class Bottleneck(cnn.Module):
         return out
 
 
-class HighResolutionModule(nn.Module):
+class HighResolutionModule(cnn.Module):
     def __init__(self, num_branches, blocks, num_blocks, num_inchannels,
                  num_channels, fuse_method, multi_scale_output=True):
         super(HighResolutionModule, self).__init__()
@@ -239,7 +239,7 @@ class HighResolutionModule(nn.Module):
             fuse_layer = []
             for j in range(num_branches):
                 if j > i:
-                    fuse_layer.append(nn.Sequential(
+                    fuse_layer.append(cnn.Sequential(
                         cnn.Conv2d(num_inchannels[j],
                                   num_inchannels[i],
                                   1,
@@ -256,20 +256,20 @@ class HighResolutionModule(nn.Module):
                     for k in range(i - j):
                         if k == i - j - 1:
                             num_outchannels_conv3x3 = num_inchannels[i]
-                            conv3x3s.append(nn.Sequential(
+                            conv3x3s.append(cnn.Sequential(
                                 InvertedResidual(num_inchannels[j],
                                           num_outchannels_conv3x3,
                                           2),
-                                # nn.BatchNorm2d(num_outchannels_conv3x3,
+                                # cnn.BatchNorm2d(num_outchannels_conv3x3,
                                 #                momentum=BN_MOMENTUM)
                             ))
                         else:
                             num_outchannels_conv3x3 = num_inchannels[j]
-                            conv3x3s.append(nn.Sequential(
+                            conv3x3s.append(cnn.Sequential(
                                 InvertedResidual(num_inchannels[j],
                                           num_outchannels_conv3x3,
                                           2),
-                                # nn.BatchNorm2d(num_outchannels_conv3x3,
+                                # cnn.BatchNorm2d(num_outchannels_conv3x3,
                                 #                momentum=BN_MOMENTUM),
                                 cnn.ReLU(False)))
                     fuse_layer.append(cnn.Sequential(*conv3x3s))
@@ -318,7 +318,7 @@ class HighResolutionNetBase(cnn.Module):
                  bn_momentum=0.1,
                  bn_epsilon=1e-5,
                  dropout_ratio=0.2,
-                 active_fn='nn.ReLU6',
+                 active_fn='cnn.ReLU6',
                  block='InvertedResidualChannels',
                  width_mult=1.0,
                  round_nearest=8,
@@ -431,7 +431,7 @@ class HighResolutionNetBase(cnn.Module):
                 InvertedResidual(in_channels,
                           out_channels,
                           2),
-                # nn.BatchNorm2d(out_channels, momentum=BN_MOMENTUM),
+                # cnn.BatchNorm2d(out_channels, momentum=BN_MOMENTUM),
                 cnn.ReLU()
             )
 
@@ -461,7 +461,7 @@ class HighResolutionNetBase(cnn.Module):
         for i in range(num_branches_cur):
             if i < num_branches_pre:
                 if num_channels_cur_layer[i] != num_channels_pre_layer[i]:
-                    transition_layers.append(nn.Sequential(
+                    transition_layers.append(cnn.Sequential(
                         cnn.Conv2d(num_channels_pre_layer[i],
                                   num_channels_cur_layer[i],
                                   3,
@@ -479,12 +479,12 @@ class HighResolutionNetBase(cnn.Module):
                     inchannels = num_channels_pre_layer[-1]
                     outchannels = num_channels_cur_layer[i] \
                         if j == i - num_branches_pre else inchannels
-                    conv3x3s.append(nn.Sequential(
+                    conv3x3s.append(cnn.Sequential(
                         cnn.Conv2d(
                             inchannels, outchannels, 3, 2, 1, bias=False),
                         cnn.BatchNorm2d(outchannels, momentum=BN_MOMENTUM),
                         cnn.ReLU()))
-                transition_layers.append(nn.Sequential(*conv3x3s))
+                transition_layers.append(cnn.Sequential(*conv3x3s))
 
         return cnn.ModuleList(transition_layers)
 
