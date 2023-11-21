@@ -4,7 +4,7 @@
 # Created:
 #   21 Nov 2023, 16:57:38
 # Last edited:
-#   21 Nov 2023, 17:08:52
+#   21 Nov 2023, 17:11:14
 # Auto updated?
 #   Yes
 #
@@ -42,6 +42,15 @@ def interpolate(input: crypten.CrypTensor, size: typing.Optional[typing.Union[in
         A new `CrypTensor` that encodes the input upsampled to the given size.
     """
 
+    ##### INPUT VALIDATION #####
+    # First, resolve the size & scale factor to a new size
+
+
+
+    ##### UPSAMPLING #####
+    # Test
+
+    # Done
     return crypten.rand(4)
 
 
