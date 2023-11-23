@@ -15,8 +15,6 @@ from torch._utils import _take_tensors
 from torch.distributed import get_rank
 from torch.distributed import get_world_size
 
-from utils.config import CPU_OVERRIDE
-
 
 def _get_env(env_name):
     if env_name not in os.environ:
@@ -27,16 +25,11 @@ def _get_env(env_name):
 def init_dist(backend='nccl', **kwargs):
     if dist.is_initialized():
         raise RuntimeError('Should not init distributed twice')
-
-    # Do some GPU stuff
-    if not CPU_OVERRIDE:
-        rank = int(_get_env('RANK'))
-        local_rank = int(_get_env('LOCAL_RANK'))
-        assert rank % torch.cuda.device_count() == local_rank
-        torch.cuda.set_device(local_rank)
-        dist.init_process_group(backend=backend, **kwargs)
-    else:
-        dist.init_process_group(backend="gloo", **kwargs)
+    rank = int(_get_env('RANK'))
+    local_rank = int(_get_env('LOCAL_RANK'))
+    assert rank % torch.cuda.device_count() == local_rank
+    torch.cuda.set_device(local_rank)
+    dist.init_process_group(backend=backend, **kwargs)
 
 
 def assert_initialized():

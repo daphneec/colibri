@@ -14,7 +14,6 @@ from utils.config import FLAGS
 from utils.meters import ScalarMeter
 from utils.meters import flush_scalar_meters
 from utils.common import get_params_by_name
-from utils.config import CPU_OVERRIDE
 
 import models.mobilenet_base as mb
 import torch.nn.functional as F
@@ -276,11 +275,8 @@ def setup_distributed(num_images=None):
         if FLAGS.bn_calibration:
             FLAGS._loader_batch_size_calib = \
                 FLAGS.bn_calibration_per_gpu_batch_size
-        if not CPU_OVERRIDE:
-            FLAGS.data_loader_workers = round(FLAGS.data_loader_workers
-                                            / udist.get_local_size())  # Per_gpu_workers(the function will return the nearest integer
-        else:
-            FLAGS.data_loader_workers = round(FLAGS.data_loader_workers)
+        FLAGS.data_loader_workers = round(FLAGS.data_loader_workers
+                                          / udist.get_local_size())  # Per_gpu_workers(the function will return the nearest integer
     else:
         count = torch.cuda.device_count()
         FLAGS.batch_size = count * FLAGS.per_gpu_batch_size
