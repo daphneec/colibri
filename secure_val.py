@@ -10,7 +10,7 @@ from utils.common import setup_logging
 from utils.common import get_device
 from utils.common import bn_calibration
 from utils import dataflow
-from utils import distributed as udist
+from utils import secure_distributed as udist
 
 import secure_common as mc
 

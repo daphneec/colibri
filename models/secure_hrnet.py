@@ -1,23 +1,24 @@
-import numbers
 import collections
 import logging
-import torch
-from torch import nn
-from torch.nn import functional as F
 from mmseg.utils import resize
-import json
-from utils import distributed as udist
+import numbers
+import torch
+from torch.nn import functional as F
+from utils import secure_distributed as udist
 
+import crypten
 import crypten.nn as cnn
 from models.secure_mobilenet_base import _make_divisible
 from models.secure_mobilenet_base import ConvBNReLU
 from models.secure_mobilenet_base import get_active_fn
-from models.secure_mobilenet_base import InvertedResidualChannels, InvertedResidualChannelsFused
+from models.secure_mobilenet_base import InvertedResidualChannels
+import models.secure_upsample as upsample
 
 __all__ = ['HighResolutionNet']
 
 checkpoint_kwparams = None
 # checkpoint_kwparams = json.load(open('checkpoint.json'))
+
 
 
 class InvertedResidual(InvertedResidualChannels):
@@ -207,7 +208,7 @@ class FuseModule(cnn.Module):
                             active_fn=self.active_fn if not use_hr_format else None,
                             kernel_size=1  # for hr format
                         ),
-                        nn.Upsample(scale_factor=2 ** (j - i), mode='nearest')))
+                        upsample.UpsampleNearest(scale_factor=2 ** (j - i))))
                 elif j == i:
                     if use_hr_format and in_channels[j] == out_channels[i]:
                         fuse_layer.append(None)
@@ -670,7 +671,7 @@ class HighResolutionNet(cnn.Module):
                 mode='bilinear',
                 align_corners=self.align_corners) for x in inputs
         ]
-        inputs = torch.cat(upsampled_inputs, dim=1)
+        inputs = crypten.cat(upsampled_inputs, dim=1)
         inputs = self.transform(inputs)
         return inputs
 

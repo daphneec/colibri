@@ -4,7 +4,6 @@ import os
 import time
 
 import torch
-import subprocess
 
 from utils.config import FLAGS, _ENV_EXPAND
 from utils.common import get_params_by_name
@@ -17,8 +16,8 @@ from utils.common import extract_item
 from utils.common import get_data_queue_size
 from utils.common import bn_calibration
 from utils import dataflow
-from utils import optim
-from utils import distributed as udist
+from utils import secure_optim as optim
+from utils import secure_distributed as udist
 from utils import prune
 from mmseg import seg_dataflow
 from mmseg.loss import CrossEntropyLoss, JointsMSELoss, accuracy_keypoint
@@ -28,8 +27,12 @@ import secure_common as mc
 from mmseg.validation import SegVal, keypoint_val
 
 
+import crypten
 import crypten.nn as cnn
-from utils.fix_hook import fix_hook
+from utils.fix_hook import fix_hook, fix_lib
+
+fix_lib(crypten)
+fix_hook(cnn.Module)
 
 def shrink_model(model_wrapper,
                  ema,
@@ -334,6 +337,7 @@ def train_val_test():
     # model
     model, model_wrapper = mc.get_model()
     ema = mc.setup_ema(model)
+    model_wrapper = model_wrapper.encrypt()
     criterion = torch.nn.CrossEntropyLoss(reduction='mean').cuda()
     criterion_smooth = optim.CrossEntropyLabelSmooth(
         FLAGS.model_kwparams['num_classes'],

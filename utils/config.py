@@ -8,7 +8,14 @@ import re
 import yaml
 
 # singletone
-CPU_OVERRIDE = True
+
+# Whether to use CPU (True) or fallback to default (GPU, False).
+# Optionally read from environment as `CPU_OVERRIDE=1`.
+if "CPU_OVERRIDE" in os.environ:
+    CPU_OVERRIDE = os.environ["CPU_OVERRIDE"] == "1"
+else:
+    CPU_OVERRIDE = False
+
 FLAGS = None
 _ENV_EXPAND = {}
 
