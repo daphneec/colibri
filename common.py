@@ -10,7 +10,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 from utils import distributed as udist
 from utils.model_profiling import model_profiling
-from utils.config import FLAGS
+from utils.config import DEVICE_MODE, FLAGS
 from utils.meters import ScalarMeter
 from utils.meters import flush_scalar_meters
 from utils.common import get_params_by_name
@@ -222,10 +222,16 @@ def get_model():
             raise ValueError('Unknown init method: {}'.format(init_method))
         if udist.is_master():
             logging.info('Init model by: {}'.format(init_method))
-    if FLAGS.use_distributed:
-        model_wrapper = udist.AllReduceDistributedDataParallel(model.cuda())
+    if DEVICE_MODE == "cpu":
+        if FLAGS.use_distributed:
+            model_wrapper = udist.AllReduceDistributedDataParallel(model)
+        else:
+            model_wrapper = torch.nn.DataParallel(model)
     else:
-        model_wrapper = torch.nn.DataParallel(model).cuda()
+        if FLAGS.use_distributed:
+            model_wrapper = udist.AllReduceDistributedDataParallel(model.cuda())
+        else:
+            model_wrapper = torch.nn.DataParallel(model).cuda()
     return model, model_wrapper
 
 
@@ -262,21 +268,25 @@ def profiling(model, use_cuda):
                     FLAGS.image_size,
                     FLAGS.image_size,
                     verbose=getattr(FLAGS, 'model_profiling_verbose', True)
-                    and udist.is_master())
+                    and udist.is_master(),
+                    use_cuda=DEVICE_MODE == "gpu")
 
 
 def setup_distributed(num_images=None):
     """Setup distributed related parameters."""
     # init distributed
     if FLAGS.use_distributed:
-        udist.init_dist()
+        udist.init_dist(backend="gloo")
         FLAGS.batch_size = udist.get_world_size() * FLAGS.per_gpu_batch_size
         FLAGS._loader_batch_size = FLAGS.per_gpu_batch_size
         if FLAGS.bn_calibration:
             FLAGS._loader_batch_size_calib = \
                 FLAGS.bn_calibration_per_gpu_batch_size
-        FLAGS.data_loader_workers = round(FLAGS.data_loader_workers
-                                          / udist.get_local_size())  # Per_gpu_workers(the function will return the nearest integer
+
+        # Compute the data_loader_workers, whatever that is, but only if we worry about GPUs
+        if DEVICE_MODE == "gpu":
+            FLAGS.data_loader_workers = round(FLAGS.data_loader_workers
+                                            / udist.get_local_size())  # Per_gpu_workers(the function will return the nearest integer
     else:
         count = torch.cuda.device_count()
         FLAGS.batch_size = count * FLAGS.per_gpu_batch_size

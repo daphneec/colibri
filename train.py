@@ -6,7 +6,7 @@ import time
 import torch
 import subprocess
 
-from utils.config import FLAGS, _ENV_EXPAND
+from utils.config import DEVICE_MODE, FLAGS, _ENV_EXPAND
 from utils.common import get_params_by_name
 from utils.common import set_random_seed
 from utils.common import create_exp_dir
@@ -80,7 +80,8 @@ def shrink_model(model_wrapper,
                        FLAGS.image_size,
                        FLAGS.image_size,
                        num_forwards=0,
-                       verbose=False)
+                       verbose=False,
+                       use_cuda=DEVICE_MODE == "gpu")
     if udist.is_master():
         logging.info('Model Shrink to FLOPS: {}'.format(model.n_macs))
         logging.info('Current model: {}'.format(mb.output_network(model)))

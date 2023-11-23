@@ -10,6 +10,7 @@ import models.hrnet as hr
 import models.hrnet_base as hrb
 import models.transformer as transformer
 from utils import distributed as udist
+from utils.config import DEVICE_MODE
 
 model_profiling_hooks = []
 model_profiling_speed_hooks = []
@@ -49,7 +50,7 @@ def run_forward(self, input, num_forwards=10):
     with Timer() as t:
         for _ in range(num_forwards):
             self.forward(*input)
-            torch.cuda.synchronize()
+            if DEVICE_MODE == "gpu": torch.cuda.synchronize()
     return int(t.time * 1e9 / num_forwards)
 
 

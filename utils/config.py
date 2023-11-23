@@ -11,6 +11,13 @@ import yaml
 FLAGS = None
 _ENV_EXPAND = {}
 
+# CPU parameters
+DEVICE_MODE = "gpu"
+if "DEVICE_MODE" in os.environ:
+    DEVICE_MODE = os.environ["DEVICE_MODE"]
+    if DEVICE_MODE != "cpu" and DEVICE_MODE != "gpu":
+        raise ValueError(f"Unknown device mode '{DEVICE_MODE}'")
+
 
 def nested_set(dic, keys, value, existed=False):
     for key in keys[:-1]:
