@@ -325,7 +325,8 @@ def model_profiling(model,
 
     """
     model.eval()
-    data = crypten.rand(batch, channel, height, width)
+    # data = crypten.rand(batch, channel, height, width)
+    data = torch.rand(batch, channel, height, width)
     origin_device = next(model.parameters()).device
     device = torch.device("cuda" if use_cuda and not CPU_OVERRIDE else "cpu")
     model = model.to(device)

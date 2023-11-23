@@ -1,21 +1,24 @@
-import numbers
 import collections
 import logging
+from mmseg.secure_utils import resize
+import numbers
 import torch
-from torch import nn
 from torch.nn import functional as F
-from models.mobilenet_base import _make_divisible
-from models.mobilenet_base import ConvBNReLU
-from models.mobilenet_base import get_active_fn
-from models.mobilenet_base import InvertedResidualChannels, InvertedResidualChannelsFused
-from mmseg.utils import resize
-import json
-from utils import distributed as udist
+from utils import secure_distributed as udist
+
+import crypten
+import crypten.nn as cnn
+from models.secure_mobilenet_base import _make_divisible
+from models.secure_mobilenet_base import ConvBNReLU
+from models.secure_mobilenet_base import get_active_fn
+from models.secure_mobilenet_base import InvertedResidualChannels
+import models.secure_upsample as upsample
 
 __all__ = ['HighResolutionNet']
 
 checkpoint_kwparams = None
 # checkpoint_kwparams = json.load(open('checkpoint.json'))
+
 
 
 class InvertedResidual(InvertedResidualChannels):
@@ -73,7 +76,7 @@ def get_block_wrapper(block_str):
     return InvertedResidual
 
 
-class ParallelModule(nn.Module):
+class ParallelModule(cnn.Module):
     def __init__(self,
                  num_branches=2,
                  block=get_block_wrapper('InvertedResidualChannels'),
@@ -82,7 +85,7 @@ class ParallelModule(nn.Module):
                  expand_ratio=6,
                  kernel_sizes=[3, 5, 7],
                  batch_norm_kwargs=None,
-                 active_fn=get_active_fn('nn.ReLU6')):
+                 active_fn=get_active_fn('cnn.ReLU6')):
         super(ParallelModule, self).__init__()
 
         self.num_branches = num_branches
@@ -121,14 +124,14 @@ class ParallelModule(nn.Module):
                     stride=1,
                     batch_norm_kwargs=self.batch_norm_kwargs,
                     active_fn=self.active_fn))
-        return nn.Sequential(*layers)
+        return cnn.Sequential(*layers)
 
     def _make_branches(self, num_branches, block, num_blocks, num_channels):
         branches = []
         for i in range(num_branches):
             branches.append(
                 self._make_one_branch(i, block, num_blocks, num_channels))
-        return nn.ModuleList(branches)
+        return cnn.ModuleList(branches)
 
     def forward(self, x):
         for i in range(self.num_branches):
@@ -136,7 +139,7 @@ class ParallelModule(nn.Module):
         return x
 
 
-class FuseModule(nn.Module):
+class FuseModule(cnn.Module):
     '''
         Consistent with HRNET:
         1. self.use_hr_format, eg: fuse 3 branches, and then add 4th branch from 3rd branch. (default fuse 4 branches)
@@ -160,7 +163,7 @@ class FuseModule(nn.Module):
                  expand_ratio=6,
                  kernel_sizes=[3, 5, 7],
                  batch_norm_kwargs=None,
-                 active_fn=get_active_fn('nn.ReLU6'),
+                 active_fn=get_active_fn('cnn.ReLU6'),
                  use_hr_format=False,
                  only_fuse_neighbor=True,
                  directly_downsample=True):
@@ -194,7 +197,7 @@ class FuseModule(nn.Module):
                         fuse_layer.append(None)
                         continue
                 if j > i:
-                    fuse_layer.append(nn.Sequential(
+                    fuse_layer.append(cnn.Sequential(
                         block(
                             in_channels[j],
                             out_channels[i],
@@ -205,7 +208,7 @@ class FuseModule(nn.Module):
                             active_fn=self.active_fn if not use_hr_format else None,
                             kernel_size=1  # for hr format
                         ),
-                        nn.Upsample(scale_factor=2 ** (j - i), mode='nearest')))
+                        upsample.UpsampleNearest(scale_factor=2 ** (j - i))))
                 elif j == i:
                     if use_hr_format and in_channels[j] == out_channels[i]:
                         fuse_layer.append(None)
@@ -299,11 +302,11 @@ class FuseModule(nn.Module):
                                             active_fn=self.active_fn,
                                             kernel_size=3  # for hr format
                                         ))
-                    fuse_layer.append(nn.Sequential(*downsamples))
-            fuse_layers.append(nn.ModuleList(fuse_layer))
+                    fuse_layer.append(cnn.Sequential(*downsamples))
+            fuse_layers.append(cnn.ModuleList(fuse_layer))
         if self.use_hr_format:
             for branch in range(in_branches, out_branches):
-                fuse_layers.append(nn.ModuleList([block(
+                fuse_layers.append(cnn.ModuleList([block(
                     out_channels[branch - 1],
                     out_channels[branch],
                     expand_ratio=self.expand_ratio,
@@ -313,7 +316,7 @@ class FuseModule(nn.Module):
                     active_fn=self.active_fn,
                     kernel_size=3  # for hr format
                 )]))
-        self.fuse_layers = nn.ModuleList(fuse_layers)
+        self.fuse_layers = cnn.ModuleList(fuse_layers)
 
     def forward(self, x):
         x_fuse = []
@@ -353,7 +356,7 @@ class FuseModule(nn.Module):
         return x_fuse
 
 
-class HeadModule(nn.Module):
+class HeadModule(cnn.Module):
     def __init__(self,
                  pre_stage_channels=[16, 32, 64, 128],
                  head_channels=None,  # [32, 64, 128, 256],
@@ -363,7 +366,7 @@ class HeadModule(nn.Module):
                  expand_ratio=6,
                  kernel_sizes=[3, 5, 7],
                  batch_norm_kwargs=None,
-                 active_fn=get_active_fn('nn.ReLU6'),
+                 active_fn=get_active_fn('cnn.ReLU6'),
                  concat_head_for_cls=False):
         super(HeadModule, self).__init__()
 
@@ -387,7 +390,7 @@ class HeadModule(nn.Module):
                     batch_norm_kwargs=self.batch_norm_kwargs,
                     active_fn=self.active_fn)
                 incre_modules.append(incre_module)
-            self.incre_modules = nn.ModuleList(incre_modules)
+            self.incre_modules = cnn.ModuleList(incre_modules)
         else:
             head_channels = pre_stage_channels
             self.incre_modules = []
@@ -405,7 +408,7 @@ class HeadModule(nn.Module):
                     batch_norm_kwargs=self.batch_norm_kwargs,
                     active_fn=self.active_fn)
                 downsamp_modules.append(downsamp_module)
-            self.downsamp_modules = nn.ModuleList(downsamp_modules)
+            self.downsamp_modules = cnn.ModuleList(downsamp_modules)
         else:
             self.downsamp_modules = []
 
@@ -449,7 +452,7 @@ class HeadModule(nn.Module):
         return x
 
 
-class HighResolutionNet(nn.Module):
+class HighResolutionNet(cnn.Module):
 
     def __init__(self,
                  num_classes=1000,
@@ -461,7 +464,7 @@ class HighResolutionNet(nn.Module):
                  bn_momentum=0.1,
                  bn_epsilon=1e-5,
                  dropout_ratio=0.2,
-                 active_fn='nn.ReLU6',
+                 active_fn='cnn.ReLU6',
                  block='InvertedResidualChannels',
                  width_mult=1.0,
                  round_nearest=8,
@@ -521,7 +524,7 @@ class HighResolutionNet(nn.Module):
                 stride=2,
                 batch_norm_kwargs=self.batch_norm_kwargs,
                 active_fn=self.active_fn))
-        self.downsamples = nn.Sequential(*downsamples)
+        self.downsamples = cnn.Sequential(*downsamples)
 
         features = []
         for index in range(len(inverted_residual_setting)):
@@ -563,9 +566,9 @@ class HighResolutionNet(nn.Module):
                 batch_norm_kwargs=self.batch_norm_kwargs,
                 active_fn=self.active_fn))
 
-            self.classifier = nn.Sequential(
-                nn.Dropout(dropout_ratio),
-                nn.Linear(last_channel, num_classes),
+            self.classifier = cnn.Sequential(
+                cnn.Dropout(dropout_ratio),
+                cnn.Linear(last_channel, num_classes),
             )
         elif self.task == 'segmentation':
             if fcn_head_for_seg:
@@ -586,11 +589,11 @@ class HighResolutionNet(nn.Module):
                         batch_norm_kwargs=self.batch_norm_kwargs,
                         active_fn=self.active_fn,
                     )
-            self.classifier = nn.Conv2d(last_channel,
+            self.classifier = cnn.Conv2d(last_channel,
                                         num_classes,
                                         kernel_size=1)
 
-        self.features = nn.Sequential(*features)
+        self.features = cnn.Sequential(*features)
 
         self.init_weights()
 
@@ -598,17 +601,17 @@ class HighResolutionNet(nn.Module):
         if udist.is_master():
             logging.info('=> init weights from normal distribution')
         for m in self.modules():
-            if isinstance(m, nn.Conv2d):
+            if isinstance(m, cnn.Conv2d):
                 if not self.initial_for_heatmap:
-                    nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                    cnn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
                 else:
-                    nn.init.normal_(m.weight, std=0.001)
+                    cnn.init.normal_(m.weight, std=0.001)
                     for name, _ in m.named_parameters():
                         if name in ['bias']:
-                            nn.init.constant_(m.bias, 0)
-            elif isinstance(m, nn.BatchNorm2d):
-                nn.init.constant_(m.weight, 1)
-                nn.init.constant_(m.bias, 0)
+                            cnn.init.constant_(m.bias, 0)
+            elif isinstance(m, cnn.BatchNorm2d):
+                cnn.init.constant_(m.weight, 1)
+                cnn.init.constant_(m.bias, 0)
 
     def get_named_block_list(self):
         """Get `{name: module}` dictionary for all inverted residual blocks."""
@@ -628,7 +631,7 @@ class HighResolutionNet(nn.Module):
                         if isinstance(fuse_path, self.block):
                             all_cells.append(
                                 ('features.{}.fuse_layers.{}.{}'.format(name, i, j), fuse_path))
-                        if isinstance(fuse_path, nn.Sequential):
+                        if isinstance(fuse_path, cnn.Sequential):
                             for k, cell in enumerate(fuse_path):
                                 if isinstance(cell, self.block):
                                     all_cells.append(
@@ -668,7 +671,7 @@ class HighResolutionNet(nn.Module):
                 mode='bilinear',
                 align_corners=self.align_corners) for x in inputs
         ]
-        inputs = torch.cat(upsampled_inputs, dim=1)
+        inputs = crypten.cat(upsampled_inputs, dim=1)
         inputs = self.transform(inputs)
         return inputs
 

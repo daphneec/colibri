@@ -337,7 +337,7 @@ def train_val_test():
     # model
     model, model_wrapper = mc.get_model()
     ema = mc.setup_ema(model)
-    model_wrapper = model_wrapper.encrypt()
+    # model_wrapper = model_wrapper.encrypt()
     criterion = torch.nn.CrossEntropyLoss(reduction='mean').cuda()
     criterion_smooth = optim.CrossEntropyLabelSmooth(
         FLAGS.model_kwparams['num_classes'],
