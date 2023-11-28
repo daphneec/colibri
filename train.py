@@ -77,15 +77,14 @@ def shrink_model(model_wrapper,
     if optimizer is not None:
         assert set(optimizer.param_groups[0]['params']) == set(
             model.parameters())
-    secure_model = cnn.from_pytorch(model, inp)
     mc.model_profiling(model,
                        FLAGS.image_size,
                        FLAGS.image_size,
                        num_forwards=0,
                        verbose=False)
     if udist.is_master():
-        logging.info('Model Shrink to FLOPS: {}'.format(secure_model.n_macs))
-        logging.info('Current model: {}'.format(mb.output_network(secure_model)))
+        logging.info('Model Shrink to FLOPS: {}'.format(model.n_macs))
+        logging.info('Current model: {}'.format(mb.output_network(model)))
 
 
 def get_prune_weights(model, use_transformer=False):
