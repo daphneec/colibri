@@ -3,6 +3,7 @@ import logging
 import os
 import time
 
+import crypten
 import torch
 import subprocess
 
@@ -157,7 +158,15 @@ def run_one_epoch(epoch,
         model.train()
     else:
         #possibly encrypt here so model.eval() is deleted and replaced with alice and bob encrypted exhcange with crypten.init()
-        model.eval()
+
+        # Alright give it a bash with Crypten's `from_pytorch`
+        cmodel = crypten.from_pytorch(model)
+        cmodel = cmodel.encrypt()
+        cmodel.eval()
+        raise RuntimeError("Hello there!")
+
+        # model.eval()
+
     if phase == 'bn_calibration':
         model.apply(bn_calibration)
 
