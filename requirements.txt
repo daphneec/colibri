@@ -10,5 +10,7 @@ pillow-simd
 matplotlib
 yacs
 cityscapesscripts
-pyarrow==0.17.1
+# pyarrow==0.17.1
+pyarrow
 mmcv-full
+crypten
