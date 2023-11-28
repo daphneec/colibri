@@ -160,6 +160,7 @@ def run_one_epoch(epoch,
     if train:
         model.train()
     else:
+        #possibly encryt here so model.eval() is deleted and replaced with alice and bob encrypted exhcange with crypten.init()
         model.eval()
     if phase == 'bn_calibration':
         model.apply(bn_calibration)
@@ -337,7 +338,8 @@ def train_val_test():
     # model
     model, model_wrapper = mc.get_model()
     ema = mc.setup_ema(model)
-    model_wrapper = model_wrapper.encrypt()
+    #don't encryt this.
+    model_wrapper = model_wrapper
     criterion = torch.nn.CrossEntropyLoss(reduction='mean').cuda()
     criterion_smooth = optim.CrossEntropyLabelSmooth(
         FLAGS.model_kwparams['num_classes'],
@@ -597,6 +599,7 @@ def validate(epoch, calib_loader, val_loader, criterion, val_meters,
                                      model_eval_wrapper.module if FLAGS.single_gpu_test else model_eval_wrapper,
                                      FLAGS)
         else:
+            # encrypt model here or modify run_one_epoch so that in test or val mode, it runs a special secure MPC evaluation on an encrypt network
             results = run_one_epoch(epoch,
                                     val_loader,
                                     model_eval_wrapper,
