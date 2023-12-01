@@ -18,6 +18,7 @@ import models.secure_transformer as secure_transformer
 import models.secure_mobilenet_base as smb
 import models.secure_hrnet as shr
 import models.secure_hrnet_base as shrb
+from utils.latency_predict import latency_predict
 
 model_profiling_hooks = []
 model_profiling_speed_hooks = []
@@ -97,36 +98,45 @@ def module_profiling(self, input, output, num_forwards, verbose):
         self._profiling_input_size = ins
         self._profiling_output_size = outs
     if isinstance(self, cnn.Conv2d):
-        self.n_macs = (ins[1] * outs[1] * self.kernel_size[0] *
-                       self.kernel_size[1] * outs[2] * outs[3] //
-                       self.groups) * outs[0]
-        self.n_params = get_params(self)
-        self.n_seconds = _run_forward(self, input)
-        self.name = conv_module_name_filter(self.__repr__())
+        # self.n_macs = (ins[1] * outs[1] * self.kernel_size[0] *
+        #                self.kernel_size[1] * outs[2] * outs[3] //
+        #                self.groups) * outs[0]
+        # self.n_params = get_params(self)
+        # self.n_seconds = _run_forward(self, input)
+        # self.name = conv_module_name_filter(self.__repr__())
+        self.latency = latency_predict(self, ins, outs)
+    if isinstance(self, cnn.ReLU):
+        self.latency = latency_predict(self, ins, outs)
     elif isinstance(self, nn.ConvTranspose2d):
-        self.n_macs = (ins[1] * outs[1] * self.kernel_size[0] *
-                       self.kernel_size[1] * outs[2] * outs[3] //
-                       self.groups) * outs[0]
-        self.n_params = get_params(self)
-        self.n_seconds = _run_forward(self, input)
-        self.name = conv_module_name_filter(self.__repr__())
+        # self.n_macs = (ins[1] * outs[1] * self.kernel_size[0] *
+        #                self.kernel_size[1] * outs[2] * outs[3] //
+        #                self.groups) * outs[0]
+        # self.n_params = get_params(self)
+        # self.n_seconds = _run_forward(self, input)
+        # self.name = conv_module_name_filter(self.__repr__())
+        self.latency = latency_predict(self, ins, outs)
     elif isinstance(self, cnn.Linear):
-        self.n_macs = ins[1] * outs[1] * outs[0]
-        self.n_params = get_params(self)
-        self.n_seconds = _run_forward(self, input)
-        self.name = self.__repr__()
+        # self.n_macs = ins[1] * outs[1] * outs[0]
+        # self.n_params = get_params(self)
+        # self.n_seconds = _run_forward(self, input)
+        # self.name = self.__repr__()
+        self.latency = latency_predict(self, ins, outs)
     elif isinstance(self, cnn.AvgPool2d):
         # NOTE: this function is correct only when stride == kernel size
-        self.n_macs = ins[1] * ins[2] * ins[3] * ins[0]
-        self.n_params = 0
-        self.n_seconds = _run_forward(self, input)
-        self.name = self.__repr__()
+        # self.n_macs = ins[1] * ins[2] * ins[3] * ins[0]
+        # self.n_params = 0
+        # self.n_seconds = _run_forward(self, input)
+        # self.name = self.__repr__()
+        self.latency = latency_predict(self, ins, outs)
+    elif isinstance(self, cnn.MaxPool2d):
+        self.latency = latency_predict(self, ins, outs)
     elif isinstance(self, cnn.AdaptiveAvgPool2d):
         # NOTE: this function is correct only when stride == kernel size
-        self.n_macs = ins[1] * ins[2] * ins[3] * ins[0]
-        self.n_params = 0
-        self.n_seconds = _run_forward(self, input)
-        self.name = self.__repr__()
+        # self.n_macs = ins[1] * ins[2] * ins[3] * ins[0]
+        # self.n_params = 0
+        # self.n_seconds = _run_forward(self, input)
+        # self.name = self.__repr__()
+        self.latency = latency_predict(self, ins, outs)
     elif isinstance(self, smb.SqueezeAndExcitation):
         self.n_macs = ins[1] * ins[2] * ins[3] * ins[0]
         self.n_params = 0
@@ -261,11 +271,11 @@ def module_profiling(self, input, output, num_forwards, verbose):
             nn.Dropout,
             nn.Sequential,
             nn.ReLU6,
-            nn.ReLU,
+            # nn.ReLU,
             smb.Swish,
             smb.Narrow,
             smb.Identity,
-            cnn.MaxPool2d,
+            # cnn.MaxPool2d,
             nn.modules.padding.ZeroPad2d,
             cnn.Sigmoid,
         ]
