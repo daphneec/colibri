@@ -347,6 +347,7 @@ def get_optimizer(model, FLAGS):
                                     nesterov=FLAGS.nesterov,
                                     weight_decay=weight_decay)  # set weight decay only on convs and fcs manually.
     elif FLAGS.optimizer == 'rmsprop':
+        # print([tensor.grad_fn for tensor in model.parameters()])
         optimizer = RMSprop(model.parameters(),
                             lr=FLAGS.lr,
                             alpha=FLAGS.alpha,

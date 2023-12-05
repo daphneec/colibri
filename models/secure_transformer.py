@@ -26,10 +26,11 @@ class MHAttentionMap(cnn.Module):
         self.q_linear = cnn.Linear(query_dim, hidden_dim, bias=bias)
         self.k_linear = cnn.Linear(query_dim, hidden_dim, bias=bias)
 
-        cnn.init.zeros_(self.k_linear.bias)
-        cnn.init.zeros_(self.q_linear.bias)
-        cnn.init.xavier_uniform_(self.k_linear.weight)
-        cnn.init.xavier_uniform_(self.q_linear.weight)
+        with crypten.no_grad():
+            cnn.init.zeros_(self.k_linear.bias)
+            cnn.init.zeros_(self.q_linear.bias)
+            cnn.init.xavier_uniform_(self.k_linear.weight)
+            cnn.init.xavier_uniform_(self.q_linear.weight)
         self.normalize_fact = float(hidden_dim / self.num_heads) ** -0.5
 
     def forward(self, q, k):
@@ -162,9 +163,10 @@ class Transformer(cnn.Module):
         self._reset_parameters()
 
     def _reset_parameters(self):
-        for p in self.parameters():
-            if p.dim() > 1:
-                cnn.init.xavier_uniform_(p)
+        with crypten.no_grad():
+            for p in self.parameters():
+                if p.dim() > 1:
+                    cnn.init.xavier_uniform_(p)
 
     def forward(self, input: Union[CrypTensor, Tensor]):
         batch_size, _, height, width = input.shape

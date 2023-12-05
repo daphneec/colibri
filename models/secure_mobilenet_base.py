@@ -590,19 +590,22 @@ def init_weights_mnas(m):
         # TODO cryptenify
         gain = torch.nn.init.calculate_gain('relu')
         std = gain / math.sqrt(fan_out)
-        cnn.init.normal_(m.weight, 0.0, std)
-        if m.bias is not None:
-            cnn.init.zeros_(m.bias)
+        with crypten.no_grad():
+            cnn.init.normal_(m.weight, 0.0, std)
+            if m.bias is not None:
+                cnn.init.zeros_(m.bias)
     elif isinstance(m, cnn.BatchNorm2d):
-        cnn.init.ones_(m.weight)
-        cnn.init.zeros_(m.bias)
+        with crypten.no_grad():
+            cnn.init.ones_(m.weight)
+            cnn.init.zeros_(m.bias)
     elif isinstance(m, cnn.Linear):
         # TODO cryptenify
-        _, fan_out = torch.nn.init._calculate_fan_in_and_fan_out(m.weight)
-        init_range = 1.0 / np.sqrt(fan_out)
-        cnn.init.uniform_(m.weight, -init_range, init_range)
-        if m.bias is not None:
-            cnn.init.zeros_(m.bias)
+        with crypten.no_grad():
+            _, fan_out = torch.nn.init._calculate_fan_in_and_fan_out(m.weight)
+            init_range = 1.0 / np.sqrt(fan_out)
+            cnn.init.uniform_(m.weight, -init_range, init_range)
+            if m.bias is not None:
+                cnn.init.zeros_(m.bias)
 
 
 def output_network(model):

@@ -600,17 +600,18 @@ class HighResolutionNet(cnn.Module):
         if udist.is_master():
             logging.info('=> init weights from normal distribution')
         for m in self.modules():
-            if isinstance(m, cnn.Conv2d):
-                if not self.initial_for_heatmap:
-                    cnn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-                else:
-                    cnn.init.normal_(m.weight, std=0.001)
-                    for name, _ in m.named_parameters():
-                        if name in ['bias']:
-                            cnn.init.constant_(m.bias, 0)
-            elif isinstance(m, cnn.BatchNorm2d):
-                cnn.init.constant_(m.weight, 1)
-                cnn.init.constant_(m.bias, 0)
+            with crypten.no_grad():
+                if isinstance(m, cnn.Conv2d):
+                    if not self.initial_for_heatmap:
+                        cnn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                    else:
+                        cnn.init.normal_(m.weight, std=0.001)
+                        for name, _ in m.named_parameters():
+                            if name in ['bias']:
+                                cnn.init.constant_(m.bias, 0)
+                elif isinstance(m, cnn.BatchNorm2d):
+                    cnn.init.constant_(m.weight, 1)
+                    cnn.init.constant_(m.bias, 0)
 
     def get_named_block_list(self):
         """Get `{name: module}` dictionary for all inverted residual blocks."""
