@@ -343,8 +343,9 @@ def model_profiling(model,
                      'nanosecs'.rjust(seconds_space, ' '))
         logging.info(''.center(
             name_space + params_space + macs_space + seconds_space, '-'))
-    with crypten.no_grad():
-        model(data)
+    with torch.no_grad():
+        with crypten.no_grad():
+            model(data)
     if verbose:
         logging.info(''.center(
             name_space + params_space + macs_space + seconds_space, '-'))

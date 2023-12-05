@@ -13,7 +13,7 @@ from utils.common import get_device
 from utils.common import bn_calibration
 from utils.fix_hook import fix_crypten
 from utils import dataflow
-from utils import distributed as udist
+from utils import secure_distributed as udist
 
 import secure_common as mc
 
@@ -125,30 +125,32 @@ def validate(epoch, calib_loader, val_loader, criterion, val_meters,
             logging.warning(
                 'Only GPU0 is used when calibration when use DataParallel')
         with torch.no_grad():
-            _ = run_one_epoch(epoch,
-                              calib_loader,
-                              model_eval_wrapper,
-                              criterion,
-                              None,
-                              None,
-                              None,
-                              val_meters,
-                              max_iter=FLAGS.bn_calibration_steps,
-                              phase='bn_calibration')
-        if FLAGS.use_distributed:
-            udist.allreduce_bn(model_eval_wrapper)
-
-    # val
-    with torch.no_grad():
-        results = run_one_epoch(epoch,
-                                val_loader,
+            with crypten.no_grad():
+                _ = run_one_epoch(epoch,
+                                calib_loader,
                                 model_eval_wrapper,
                                 criterion,
                                 None,
                                 None,
                                 None,
                                 val_meters,
-                                phase=phase)
+                                max_iter=FLAGS.bn_calibration_steps,
+                                phase='bn_calibration')
+        if FLAGS.use_distributed:
+            udist.allreduce_bn(model_eval_wrapper)
+
+    # val
+    with torch.no_grad():
+        with crypten.no_grad():
+            results = run_one_epoch(epoch,
+                                    val_loader,
+                                    model_eval_wrapper,
+                                    criterion,
+                                    None,
+                                    None,
+                                    None,
+                                    val_meters,
+                                    phase=phase)
     return results
 
 

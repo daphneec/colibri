@@ -11,7 +11,7 @@ import crypten
 import crypten.nn as cnn
 from torch.utils.tensorboard import SummaryWriter
 
-from utils import distributed as udist
+from utils import secure_distributed as udist
 from utils.secure_model_profiling import model_profiling
 from utils.config import DEVICE_MODE, FLAGS
 from utils.meters import ScalarMeter

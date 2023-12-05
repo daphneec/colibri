@@ -20,8 +20,8 @@ from utils.common import get_data_queue_size
 from utils.common import bn_calibration
 from utils.fix_hook import fix_crypten
 from utils import dataflow
-from utils import optim
-from utils import distributed as udist
+from utils import secure_optim as optim
+from utils import secure_distributed as udist
 from utils import prune
 from mmseg import seg_dataflow
 from mmseg.loss import CrossEntropyLoss, JointsMSELoss, accuracy_keypoint
@@ -582,37 +582,9 @@ def validate(epoch, calib_loader, val_loader, criterion, val_meters,
                 logging.warning(
                     'Only GPU0 is used when calibration when use DataParallel')
             with torch.no_grad():
-                _ = run_one_epoch(epoch,
-                                  calib_loader,
-                                  model_eval_wrapper,
-                                  criterion,
-                                  None,
-                                  None,
-                                  None,
-                                  None,
-                                  val_meters,
-                                  max_iter=FLAGS.bn_calibration_steps,
-                                  phase='bn_calibration')
-            if FLAGS.use_distributed:
-                udist.allreduce_bn(model_eval_wrapper)
-
-    # val
-    with torch.no_grad():
-        if FLAGS.model_kwparams.task == 'segmentation':
-            if FLAGS.dataset == 'coco':
-                results = 0
-                if udist.is_master():
-                    results = keypoint_val(val_set, val_loader, model_eval_wrapper.module, criterion)
-            else:
-                assert segval is not None
-                results = segval.run(epoch,
-                                     val_loader,
-                                     model_eval_wrapper.module if FLAGS.single_gpu_test else model_eval_wrapper,
-                                     FLAGS)
-        else:
-            # encrypt model here or modify run_one_epoch so that in test or val mode, it runs a special secure MPC evaluation on an encrypt network
-            results = run_one_epoch(epoch,
-                                    val_loader,
+                with crypten.no_grad():
+                    _ = run_one_epoch(epoch,
+                                    calib_loader,
                                     model_eval_wrapper,
                                     criterion,
                                     None,
@@ -620,7 +592,37 @@ def validate(epoch, calib_loader, val_loader, criterion, val_meters,
                                     None,
                                     None,
                                     val_meters,
-                                    phase=phase)
+                                    max_iter=FLAGS.bn_calibration_steps,
+                                    phase='bn_calibration')
+            if FLAGS.use_distributed:
+                udist.allreduce_bn(model_eval_wrapper)
+
+    # val
+    with torch.no_grad():
+        with crypten.no_grad():
+            if FLAGS.model_kwparams.task == 'segmentation':
+                if FLAGS.dataset == 'coco':
+                    results = 0
+                    if udist.is_master():
+                        results = keypoint_val(val_set, val_loader, model_eval_wrapper.module, criterion)
+                else:
+                    assert segval is not None
+                    results = segval.run(epoch,
+                                        val_loader,
+                                        model_eval_wrapper.module if FLAGS.single_gpu_test else model_eval_wrapper,
+                                        FLAGS)
+            else:
+                # encrypt model here or modify run_one_epoch so that in test or val mode, it runs a special secure MPC evaluation on an encrypt network
+                results = run_one_epoch(epoch,
+                                        val_loader,
+                                        model_eval_wrapper,
+                                        criterion,
+                                        None,
+                                        None,
+                                        None,
+                                        None,
+                                        val_meters,
+                                        phase=phase)
     summary_bn(model_eval_wrapper, phase)
     return results, model_eval_wrapper
 

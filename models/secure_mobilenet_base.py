@@ -8,6 +8,7 @@ import numpy as np
 
 import crypten
 from crypten import nn as cnn
+import torch
 
 import models.compress_utils as cu
 from utils.common import add_prefix
@@ -585,9 +586,9 @@ def init_weights_mnas(m):
             fan_out = m.weight[0][0].numel()
         else:
             # TODO cryptenify
-            _, fan_out = cnn.init._calculate_fan_in_and_fan_out(m.weight)
+            _, fan_out = torch.nn.init._calculate_fan_in_and_fan_out(m.weight)
         # TODO cryptenify
-        gain = cnn.init.calculate_gain('relu')
+        gain = torch.nn.init.calculate_gain('relu')
         std = gain / math.sqrt(fan_out)
         cnn.init.normal_(m.weight, 0.0, std)
         if m.bias is not None:
@@ -597,7 +598,7 @@ def init_weights_mnas(m):
         cnn.init.zeros_(m.bias)
     elif isinstance(m, cnn.Linear):
         # TODO cryptenify
-        _, fan_out = cnn.init._calculate_fan_in_and_fan_out(m.weight)
+        _, fan_out = torch.nn.init._calculate_fan_in_and_fan_out(m.weight)
         init_range = 1.0 / np.sqrt(fan_out)
         cnn.init.uniform_(m.weight, -init_range, init_range)
         if m.bias is not None:

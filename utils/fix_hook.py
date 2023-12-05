@@ -4,7 +4,7 @@
 # Created:
 #   09 Nov 2023, 10:41:00
 # Last edited:
-#   05 Dec 2023, 12:24:25
+#   05 Dec 2023, 13:22:46
 # Auto updated?
 #   Yes
 #
@@ -17,6 +17,7 @@ from typing import Any, Callable, Dict, Optional, Tuple, TypeVar, Union
 
 import crypten
 import crypten.nn as cnn
+import torch
 
 
 ##### LIBRARY #####
@@ -169,6 +170,7 @@ def fix_crypten():
 
         Specifically, applies the following functions for this library:
         - `fix_lib()` to `crypten`;
+        - `fix_init()` to `crypten.nn.init`;
         - `fix_hook()` to `crypten.nn.Module`; and
         - `fix_conv()` to `crypten.nn.Conv2d`.
 
@@ -176,12 +178,17 @@ def fix_crypten():
     """
 
     fix_lib(crypten)
+    # fix_init(cnn.init)
     fix_hook(cnn.Module)
     fix_conv(cnn.Conv2d)
 
 def fix_lib(lib):
     """
         Fixes stuff like `mean` and `sum` in the given Crypten library module.
+
+        Specifically, injects:
+        - `crypten.mean()` as an alias for `CrypTensor.mean()`
+        - `crypten.sum()` as an alias for `CrypTensor.sum()`
 
         Use it like so:
         ```python
@@ -202,6 +209,32 @@ def fix_lib(lib):
         print("NOTE: utils.fix_hook.fix_lib(): Not fixing `sum` for given library as it apparently already exists")
     except AttributeError:
         lib.sum = _sum
+
+# def fix_init(init):
+#     """
+#         Fixes stuff like `_calculate_fan_in_and_fan_out` not existing in the given Crypten (init) module.
+
+#         Specifically, injects:
+#         - `crypten.nn.init._calculate_fan_in_and_fan_out()` as an alias for `torch.nn.init._calculate_fan_in_and_fan_out()`.
+#         - `crypten.nn.init.calculate_gain()` as an alias for `torch.nn.init.calculate_gain()`.
+
+#         Use it like so:
+#         ```python
+#         fix_init(cnn.init)
+#         ```
+#     """
+
+#     try:
+#         getattr(init, '_calculate_fan_in_and_fan_out')
+#         print("NOTE: utils.fix_hook.fix_init(): Not fixing `_calculate_fan_in_and_fan_out` for given library as it apparently already exists")
+#     except AttributeError:
+#         init._calculate_fan_in_and_fan_out = torch.nn.init._calculate_fan_in_and_fan_out
+
+#     try:
+#         getattr(init, 'calculate_gain')
+#         print("NOTE: utils.fix_hook.fix_init(): Not fixing `calculate_gain` for given library as it apparently already exists")
+#     except AttributeError:
+#         init.calculate_gain = torch.nn.init.calculate_gain
 
 def fix_hook(ty):
     """
