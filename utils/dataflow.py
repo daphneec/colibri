@@ -5,6 +5,7 @@ from PIL import Image
 import torch
 from torchvision import datasets, transforms
 from utils.autoaug import RandAugment
+from utils.config import DEVICE_MODE
 from utils.transforms import Lighting
 from utils.transforms import CenterCropPadding
 from utils.transforms import RandomResizedCropPadding
@@ -30,7 +31,8 @@ class DataPrefetcher():
 
     def __init__(self, loader):
         self.loader = iter(loader)
-        self.stream = torch.cuda.Stream()
+        if DEVICE_MODE == "gpu":
+            self.stream = torch.cuda.Stream()
         # With Amp, it isn't necessary to manually convert data to half.
         # if args.fp16:
         #     self.mean = self.mean.half()
@@ -46,9 +48,16 @@ class DataPrefetcher():
             self.next_input = None
             self.next_target = None
             return
-        with torch.cuda.stream(self.stream):
-            self.next_input = self.next_input.cuda(non_blocking=True)
-            self.next_target = self.next_target.cuda(non_blocking=True)
+        if DEVICE_MODE == "gpu":
+            with torch.cuda.stream(self.stream):
+                self.next_input = self.next_input.cuda(non_blocking=True)
+                self.next_target = self.next_target.cuda(non_blocking=True)
+                # With Amp, it isn't necessary to manually convert data to half.
+                # if args.fp16:
+                #     self.next_input = self.next_input.half()
+                # else:
+                self.next_input = self.next_input.float()
+        else:
             # With Amp, it isn't necessary to manually convert data to half.
             # if args.fp16:
             #     self.next_input = self.next_input.half()
@@ -56,7 +65,8 @@ class DataPrefetcher():
             self.next_input = self.next_input.float()
 
     def __next__(self):
-        torch.cuda.current_stream().wait_stream(self.stream)
+        if DEVICE_MODE == "gpu":
+            torch.cuda.current_stream().wait_stream(self.stream)
         if self.stop:
             raise StopIteration
         input = self.next_input
@@ -78,7 +88,8 @@ class DataPrefetcherKeypoint():
 
     def __init__(self, loader):
         self.loader = iter(loader)
-        self.stream = torch.cuda.Stream()
+        if DEVICE_MODE == "gpu":
+            self.stream = torch.cuda.Stream()
         # With Amp, it isn't necessary to manually convert data to half.
         # if args.fp16:
         #     self.mean = self.mean.half()
@@ -96,10 +107,17 @@ class DataPrefetcherKeypoint():
             self.next_target_weight = None
             self.next_meta = None
             return
-        with torch.cuda.stream(self.stream):
-            self.next_input = self.next_input.cuda(non_blocking=True)
-            self.next_target = self.next_target.cuda(non_blocking=True)
-            self.next_target_weight = self.next_target_weight.cuda(non_blocking=True)
+        if DEVICE_MODE == "gpu":
+            with torch.cuda.stream(self.stream):
+                self.next_input = self.next_input.cuda(non_blocking=True)
+                self.next_target = self.next_target.cuda(non_blocking=True)
+                self.next_target_weight = self.next_target_weight.cuda(non_blocking=True)
+                # With Amp, it isn't necessary to manually convert data to half.
+                # if args.fp16:
+                #     self.next_input = self.next_input.half()
+                # else:
+                self.next_input = self.next_input.float()
+        else:
             # With Amp, it isn't necessary to manually convert data to half.
             # if args.fp16:
             #     self.next_input = self.next_input.half()
@@ -107,7 +125,8 @@ class DataPrefetcherKeypoint():
             self.next_input = self.next_input.float()
 
     def __next__(self):
-        torch.cuda.current_stream().wait_stream(self.stream)
+        if DEVICE_MODE == "gpu":
+            torch.cuda.current_stream().wait_stream(self.stream)
         if self.stop:
             raise StopIteration
         input = self.next_input

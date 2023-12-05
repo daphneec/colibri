@@ -25,11 +25,12 @@ def _get_env(env_name):
 
 
 def init_dist(backend='nccl', **kwargs):
-    # Set the backend appropriately
-    if DEVICE_MODE == "cpu":
-        backend = "gloo"
-    else:
-        backend = "nccl"
+    # NOTE: Only call to `init_dist` (`common.py:288`, or thereabouts) already uses `gloo`
+    # # Set the backend appropriately
+    # if DEVICE_MODE == "cpu":
+    #     backend = "gloo"
+    # else:
+    #     backend = "nccl"
 
     # Run the normal function*
     if dist.is_initialized():
@@ -54,7 +55,7 @@ def get_local_rank():
 
 def get_local_size():
     assert_initialized()
-    return torch.cuda.device_count()
+    return 1 if DEVICE_MODE == "cpu" else torch.cuda.device_count()
 
 
 def is_master():
@@ -203,7 +204,10 @@ class AllReduceDistributedDataParallel(nn.Module):  # old way of DDP
         return scatter_kwargs(inputs, kwargs, device_ids, dim=self.dim)
 
     def forward(self, *inputs, **kwargs):
-        inputs, kwargs = self.scatter(inputs, kwargs,
-                                      [torch.cuda.current_device()])
-        res = self.module(*inputs[0], **kwargs[0])
+        if DEVICE_MODE == "gpu":
+            inputs, kwargs = self.scatter(inputs, kwargs,
+                                        [torch.cuda.current_device()])
+            res = self.module(*inputs[0], **kwargs[0])
+        else:
+            res = self.module(*inputs, **kwargs)
         return res

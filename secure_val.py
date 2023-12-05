@@ -6,7 +6,7 @@ import crypten
 import crypten.nn as cnn
 import torch
 
-from utils.config import FLAGS, _ENV_EXPAND
+from utils.config import DEVICE_MODE, FLAGS, _ENV_EXPAND
 from utils.common import set_random_seed
 from utils.common import setup_logging
 from utils.common import get_device
@@ -59,7 +59,8 @@ def run_one_epoch(epoch,
             if batch_idx >= max_iter:
                 break
 
-        target = target.cuda(non_blocking=True)
+        if DEVICE_MODE == "gpu":
+            target = target.cuda(non_blocking=True)
         mc.forward_loss(model, criterion, input, target, meters)
 
     results = mc.reduce_and_flush_meters(meters)
@@ -80,7 +81,8 @@ def val():
     # model
     model, model_wrapper = mc.get_model()
     ema = mc.setup_ema(model)
-    criterion = torch.nn.CrossEntropyLoss(reduction='none').cuda()
+    criterion = torch.nn.CrossEntropyLoss(reduction='none')
+    if DEVICE_MODE == "gpu": criterion = criterion.cuda()
     # distributed
 
     # check pretrained

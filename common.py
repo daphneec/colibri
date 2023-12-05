@@ -144,7 +144,10 @@ def reduce_and_flush_meters(meters, method='avg'):
             else:
                 raise NotImplementedError(
                     'flush method: {} is not yet implemented.'.format(method))
-            tensor = torch.tensor(meter.values).cuda()
+            if DEVICE_MODE == "cpu":
+                tensor = torch.tensor(meter.values)
+            else:
+                tensor = torch.tensor(meter.values).cuda()
             gather_tensors = [
                 torch.ones_like(tensor) for _ in range(udist.get_world_size())
             ]
@@ -229,9 +232,15 @@ def get_model():
             model_wrapper = torch.nn.DataParallel(model)
     else:
         if FLAGS.use_distributed:
-            model_wrapper = udist.AllReduceDistributedDataParallel(model.cuda())
+            if DEVICE_MODE == "cpu":
+                model_wrapper = udist.AllReduceDistributedDataParallel(model)
+            else:
+                model_wrapper = udist.AllReduceDistributedDataParallel(model.cuda())
         else:
-            model_wrapper = torch.nn.DataParallel(model).cuda()
+            if DEVICE_MODE == "cpu":
+                model_wrapper = torch.nn.DataParallel(model)
+            else:
+                model_wrapper = torch.nn.DataParallel(model).cuda()
     return model, model_wrapper
 
 
@@ -283,12 +292,15 @@ def setup_distributed(num_images=None):
             FLAGS._loader_batch_size_calib = \
                 FLAGS.bn_calibration_per_gpu_batch_size
 
-        # Compute the data_loader_workers, whatever that is, but only if we worry about GPUs
+        # Scale the data_loader_workers, whatever that is, but only if we worry about GPUs
         if DEVICE_MODE == "gpu":
             FLAGS.data_loader_workers = round(FLAGS.data_loader_workers
                                             / udist.get_local_size())  # Per_gpu_workers(the function will return the nearest integer
     else:
-        count = torch.cuda.device_count()
+        if DEVICE_MODE == "cpu":
+            count = torch.cuda.device_count()
+        else:
+            count = 1
         FLAGS.batch_size = count * FLAGS.per_gpu_batch_size
         FLAGS._loader_batch_size = FLAGS.batch_size
         if FLAGS.bn_calibration:

@@ -192,7 +192,8 @@ def run_one_epoch(epoch,
             if batch_idx >= max_iter:
                 break
 
-        target = target.cuda(non_blocking=True)
+        if DEVICE_MODE == "gpu":
+            target = target.cuda(non_blocking=True)
         if train:
             optimizer.zero_grad()
             rho = rho_scheduler(FLAGS._global_step)
@@ -333,22 +334,27 @@ def train_val_test():
     # model
     model, model_wrapper = mc.get_model()
     ema = mc.setup_ema(model)
-    criterion = torch.nn.CrossEntropyLoss(reduction='mean').cuda()
+    criterion = torch.nn.CrossEntropyLoss(reduction='mean')
     criterion_smooth = optim.CrossEntropyLabelSmooth(
         FLAGS.model_kwparams['num_classes'],
         FLAGS['label_smoothing'],
-        reduction='mean').cuda()
+        reduction='mean')
     if model.task == 'segmentation':
-        criterion = CrossEntropyLoss().cuda()
-        criterion_smooth = CrossEntropyLoss().cuda()
+        criterion = CrossEntropyLoss()
+        criterion_smooth = CrossEntropyLoss()
     if FLAGS.dataset == 'coco':
-        criterion = JointsMSELoss(use_target_weight=True).cuda()
-        criterion_smooth = JointsMSELoss(use_target_weight=True).cuda()
+        criterion = JointsMSELoss(use_target_weight=True)
+        criterion_smooth = JointsMSELoss(use_target_weight=True)
+    # Make CUDA if running on the GPU
+    if DEVICE_MODE == "gpu":
+        criterion = criterion.cuda()
+        criterion_smooth = criterion_smooth.cuda()
 
     if FLAGS.get('log_graph_only', False):
         if udist.is_master():
             _input = torch.zeros(1, 3, FLAGS.image_size,
-                                 FLAGS.image_size).cuda()
+                                 FLAGS.image_size)
+            if DEVICE_MODE == "gpu": _input = _input.cuda()
             _input = _input.requires_grad_(True)
             if isinstance(model_wrapper, (torch.nn.DataParallel, udist.AllReduceDistributedDataParallel)):
                 mc.summary_writer.add_graph(model_wrapper.module, (_input,), verbose=True)
@@ -386,19 +392,24 @@ def train_val_test():
         checkpoint = torch.load(os.path.join(FLAGS.resume,
                                              'latest_checkpoint.pt'),
                                 map_location=lambda storage, loc: storage)
-        model_wrapper = checkpoint['model'].cuda()
+        model_wrapper = checkpoint['model']
+        if DEVICE_MODE == "gpu": model_wrapper = model_wrapper.cuda()
         model = model_wrapper.module
         # model = checkpoint['model'].module
         optimizer = checkpoint['optimizer']
         for state in optimizer.state.values():
             for k, v in state.items():
                 if isinstance(v, torch.Tensor):
-                    state[k] = v.cuda()
+                    if DEVICE_MODE == "cpu":
+                        state[k] = v
+                    else:
+                        state[k] = v.cuda()
         # model_wrapper.load_state_dict(checkpoint['model'])
         # optimizer.load_state_dict(checkpoint['optimizer'])
         if ema:
             # ema.load_state_dict(checkpoint['ema'])
-            ema = checkpoint['ema'].cuda()
+            ema = checkpoint['ema']
+            if DEVICE_MODE == "gpu": ema = ema.cuda()
             ema.to(get_device(model))
         last_epoch = checkpoint['last_epoch']
         lr_scheduler = optim.get_lr_scheduler(optimizer, FLAGS, last_epoch=(last_epoch + 1) * FLAGS._steps_per_epoch)
