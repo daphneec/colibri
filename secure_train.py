@@ -18,7 +18,7 @@ from utils.common import get_device
 from utils.common import extract_item
 from utils.common import get_data_queue_size
 from utils.common import bn_calibration
-from utils.fix_hook import fix_hook, fix_lib
+from utils.fix_hook import fix_crypten
 from utils import dataflow
 from utils import optim
 from utils import distributed as udist
@@ -32,8 +32,7 @@ from mmseg.validation import SegVal, keypoint_val
 
 
 # STOP THE PRESSES: Fix `cnn.Module`s not having some of the functions we expect (but would support)
-fix_lib(crypten)
-fix_hook(cnn.Module)
+fix_crypten()
 
 
 def shrink_model(model_wrapper,

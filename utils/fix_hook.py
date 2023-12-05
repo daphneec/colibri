@@ -4,7 +4,7 @@
 # Created:
 #   09 Nov 2023, 10:41:00
 # Last edited:
-#   16 Nov 2023, 15:12:15
+#   05 Dec 2023, 12:24:25
 # Auto updated?
 #   Yes
 #
@@ -15,6 +15,7 @@
 import sys
 from typing import Any, Callable, Dict, Optional, Tuple, TypeVar, Union
 
+import crypten
 import crypten.nn as cnn
 
 
@@ -139,6 +140,45 @@ def _forward_override(self, *args, **kwargs):
 
 
 
+def _conv_init(
+    self: cnn.Conv2d,
+    in_channels: Any,
+    out_channels: Any,
+    kernel_size: Any,
+    stride: int = 1,
+    padding: int = 0,
+    dilation: int = 1,
+    groups: int = 1,
+    bias: bool = True
+):
+    """
+        Override for the `cnn.Conv2d` constructor to make it remember its input channels.
+    """
+
+    # Run the normal init
+    self._untouched_init(in_channels, out_channels, kernel_size, stride=stride, padding=padding, dilation=dilation, groups=groups, bias=bias)
+
+    # Remember the input channels
+    self.in_channels = in_channels
+
+
+
+def fix_crypten():
+    """
+        Fixes missing functions in crypten.
+
+        Specifically, applies the following functions for this library:
+        - `fix_lib()` to `crypten`;
+        - `fix_hook()` to `crypten.nn.Module`; and
+        - `fix_conv()` to `crypten.nn.Conv2d`.
+
+        Simply call this function \*once\* and you should be good to go.
+    """
+
+    fix_lib(crypten)
+    fix_hook(cnn.Module)
+    fix_conv(cnn.Conv2d)
+
 def fix_lib(lib):
     """
         Fixes stuff like `mean` and `sum` in the given Crypten library module.
@@ -152,21 +192,25 @@ def fix_lib(lib):
     # Inject mean if it does not exist
     try:
         getattr(lib, 'mean')
-        print("NOTE: fix_lib(): Not fixing `mean` for given library as it apparently already exists")
+        print("NOTE: utils.fix_hook.fix_lib(): Not fixing `mean` for given library as it apparently already exists")
     except AttributeError:
         lib.mean = _mean
 
     # Inject sum if it does not exist
     try:
         getattr(lib, 'sum')
-        print("NOTE: fix_lib(): Not fixing `sum` for given library as it apparently already exists")
+        print("NOTE: utils.fix_hook.fix_lib(): Not fixing `sum` for given library as it apparently already exists")
     except AttributeError:
         lib.sum = _sum
-
 
 def fix_hook(ty):
     """
         Fixes `register_forward_hook()` not existing in the given Crypten Module.
+
+        Specifically, injects:
+        - `cnn.Module.register_forward_hook()`
+        - `cnn.Module.apply()`
+        - A wrapper around `cnn.Module.forward()` to implement the hooks. The old forward is re-injected as `cnn.Module._unhooked_forward()`.
 
         Use it like so:
         ```python
@@ -178,18 +222,38 @@ def fix_hook(ty):
     # Inject the functions if they haven't been injected already
     try:
         getattr(ty, 'register_forward_hook')
-        print("NOTE: fix_hook(): Not fixing `register_forward_hook` for given module as it apparently already exists")
+        print("NOTE: utils.fix_hook.fix_hook(): Not fixing `register_forward_hook` for given module as it apparently already exists")
     except AttributeError:
         ty.register_forward_hook = _register_forward_hook
 
     try:
         getattr(ty, '_unhooked_forward')
-        print("NOTE: fix_hook(): Not fixing `forward` override for given module as it apparently already exists (or rather, `_unhooked_forward` already exists)")
+        print("NOTE: utils.fix_hook.fix_hook(): Not fixing `forward` override for given module as it apparently already exists (or rather, `_unhooked_forward` already exists)")
     except AttributeError:
         ty._unhooked_forward = cnn.Module.forward
         ty.forward = _forward_override
     try:
         getattr(ty, "apply")
-        print("NOTE: fix_hook(): Not fixing `apply` because it already exists")
+        print("NOTE: utils.fix_hook.fix_hook(): Not fixing `apply` because it already exists")
     except AttributeError:
         ty.apply = ty._apply
+
+def fix_conv(conv):
+    """
+        Fixes `in_channels` not existing in the given Crypten module.
+
+        Specifically, injects:
+        - A wrapper around `cnn.Conv2d.__init__()` to make it store its input channels under `in_channels`.
+
+        Use it like so:
+        ```python
+        fix_conv(cnn.Conv2d)
+        ```
+    """
+
+    # Inject the wrapper around __init__
+    if getattr(conv, "__init__") is not _conv_init:
+        conv._untouched_init = cnn.Conv2d.__init__
+        conv.__init__ = _conv_init
+    else:
+        print("NOTE: utils.fix_hook.fix_conv(): Not fixing `__init__` for given module as it is already overwritten")

@@ -11,7 +11,7 @@ from utils.common import set_random_seed
 from utils.common import setup_logging
 from utils.common import get_device
 from utils.common import bn_calibration
-from utils.fix_hook import fix_hook, fix_lib
+from utils.fix_hook import fix_crypten
 from utils import dataflow
 from utils import distributed as udist
 
@@ -19,8 +19,7 @@ import secure_common as mc
 
 
 # STOP THE PRESSES: Fix `cnn.Module`s not having some of the functions we expect (but would support)
-fix_lib(crypten)
-fix_hook(cnn.Module)
+fix_crypten()
 
 
 def run_one_epoch(epoch,
