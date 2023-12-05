@@ -4,6 +4,7 @@ import os
 import time
 
 import crypten
+import crypten.nn as cnn
 import torch
 import subprocess
 
@@ -17,6 +18,7 @@ from utils.common import get_device
 from utils.common import extract_item
 from utils.common import get_data_queue_size
 from utils.common import bn_calibration
+from utils.fix_hook import fix_hook, fix_lib
 from utils import dataflow
 from utils import optim
 from utils import distributed as udist
@@ -24,9 +26,14 @@ from utils import prune
 from mmseg import seg_dataflow
 from mmseg.loss import CrossEntropyLoss, JointsMSELoss, accuracy_keypoint
 
-import models.mobilenet_base as mb
-import common as mc
+import models.secure_mobilenet_base as mb
+import secure_common as mc
 from mmseg.validation import SegVal, keypoint_val
+
+
+# STOP THE PRESSES: Fix `cnn.Module`s not having some of the functions we expect (but would support)
+fix_lib(crypten)
+fix_hook(cnn.Module)
 
 
 def shrink_model(model_wrapper,
@@ -158,14 +165,7 @@ def run_one_epoch(epoch,
         model.train()
     else:
         #possibly encrypt here so model.eval() is deleted and replaced with alice and bob encrypted exhcange with crypten.init()
-
-        # Alright give it a bash with Crypten's `from_pytorch`
-        cmodel = crypten.from_pytorch(model)
-        cmodel = cmodel.encrypt()
-        cmodel.eval()
-        raise RuntimeError("Hello there!")
-
-        # model.eval()
+        model.eval()
 
     if phase == 'bn_calibration':
         model.apply(bn_calibration)

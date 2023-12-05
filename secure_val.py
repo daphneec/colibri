@@ -11,10 +11,16 @@ from utils.common import set_random_seed
 from utils.common import setup_logging
 from utils.common import get_device
 from utils.common import bn_calibration
+from utils.fix_hook import fix_hook, fix_lib
 from utils import dataflow
 from utils import distributed as udist
 
-import common as mc
+import secure_common as mc
+
+
+# STOP THE PRESSES: Fix `cnn.Module`s not having some of the functions we expect (but would support)
+fix_lib(crypten)
+fix_hook(cnn.Module)
 
 
 def run_one_epoch(epoch,
@@ -31,15 +37,7 @@ def run_one_epoch(epoch,
     assert phase in ['val', 'test', 'bn_calibration'
                     ], "phase not be in val/test/bn_calibration."
 
-    # Alright give it a bash with Crypten's `from_pytorch`
-    cmodel = cnn.from_pytorch(model, torch.rand(model.))
-    cmodel = cmodel.encrypt()
-    cmodel.eval()
-
-    raise RuntimeError("Until here and no further")
-
-    # model.eval()
-
+    model.eval()
     if phase == 'bn_calibration':
         model.apply(bn_calibration)
 
