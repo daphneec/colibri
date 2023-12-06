@@ -127,13 +127,15 @@ def log_pruned_info(model, flops_pruned, infos, prune_threshold):
         logging.info('Pruned model: {}'.format(
             prune.output_searched_network(model, infos, FLAGS.prune_params)))
 
-    flops_remain = model.n_macs - flops_pruned
+    #flops_remain = #model.n_macs - flops_pruned
     if udist.is_master():
         logging.info(
-            'Prune threshold: {}, flops pruned: {}, flops remain: {}'.format(
-                prune_threshold, flops_pruned, flops_remain))
+            'Prune threshold: {}, flops pruned: {}'.format(
+                prune_threshold, flops_pruned))
+            #'Prune threshold: {}, flops pruned: {}, flops remain: {}'.format(
+            #    prune_threshold, flops_pruned, flops_remain))
         mc.summary_writer.add_scalar('prune/flops/{}'.format(prune_threshold),
-                                     flops_remain, FLAGS._global_step)
+                                     FLAGS._global_step) #flops_remain, FLAGS._global_step)
 
 
 def run_one_epoch(epoch,
