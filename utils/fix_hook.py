@@ -4,7 +4,7 @@
 # Created:
 #   09 Nov 2023, 10:41:00
 # Last edited:
-#   05 Dec 2023, 17:36:11
+#   07 Dec 2023, 11:00:03
 # Auto updated?
 #   Yes
 #
@@ -169,19 +169,7 @@ def fix_debug():
         Used in addition to other fixers to inject debug functions/whatnot in various parts of the API.
     """
 
-    class GradFnWrapper():
-        def __init__(self, grad_fn):
-            self.grad_fn = grad_fn
-        def __getattr__(self, name):
-            if name == "grad_fn": return self.grad_fn
-            print(f"Accessing grad_fn.{name}")
-            return self.grad_fn.__getattr__(name)
-        def __setattr__(self, name, value):
-            if name == "grad_fn": object.__setattr__(self, name, value); return
-            print(f"Setting grad_fn.{name} to '{value}'")
-            return object.__setattr__(self.grad_fn, name, value)
-
-    torch.Tensor.grad_fn = GradFnWrapper(torch.Tensor.grad_fn)
+    ...
 
 def fix_crypten():
     """
