@@ -4,7 +4,7 @@
 # Created:
 #   09 Nov 2023, 10:41:00
 # Last edited:
-#   07 Dec 2023, 11:00:03
+#   12 Dec 2023, 14:40:16
 # Auto updated?
 #   Yes
 #
@@ -12,12 +12,17 @@
 #   File that implements fixes for Crypten's register_forward_hook().
 #
 
+import os
 import sys
 from typing import Any, Callable, Dict, Optional, Tuple, TypeVar, Union
 
 import crypten
 import crypten.nn as cnn
 import torch
+import torch.nn.functional as F
+
+# Get some debug stuff
+DEBUG = "DEBUG" in os.environ and (os.environ["DEBUG"] == "true" or os.environ["DEBUG"] == "1")
 
 
 ##### LIBRARY #####
@@ -78,7 +83,6 @@ def _sum(tensor, *args, **kwargs):
     tensor.sum(*args, **kwargs)
 
 
-
 def _register_forward_hook(
     self,
     hook: Union[
@@ -93,6 +97,8 @@ def _register_forward_hook(
     """
         Registers new hooks that are called *after* the forward pass has commenced.
     """
+
+    # if DEBUG: print(f"DEBUG: utils.fix_hook._register_forward_hook{type(self)}(): Registering forward hook '{hook}'")
 
     # Ensure the hooks list exist for this module
     try:
@@ -112,55 +118,67 @@ def _register_forward_hook(
     # Alrighty done
     return
 
-def _forward_override(self, *args, **kwargs):
+def _forward_override(forward_func):
     """
         Override for the normal crypten forward that runs its forward, then calls hooks when a result has been produced.
     """
 
-    # Run the normal forward
-    x = self._unhooked_forward(*args, **kwargs)
+    def inner(self, *args, **kwargs):
+        # Run the normal forward
+        x = forward_func(self, *args, **kwargs)
 
-    # Call any hooks, if any
-    try:
-        for hook in self._forward_hooks:
+        # Get the hooks, if any
+        try:
+            forward_hooks = self._forward_hooks
+        except AttributeError as e:
+            # Nothing to do get
+            if DEBUG: print(f"DEBUG: utils.fix_hook._forward_override{type(self)}(): No hooks to call")
+            forward_hooks = []
+
+        # Call the hooks
+        for hook in forward_hooks:
+            if DEBUG: print(f"DEBUG: utils.fix_hook._forward_override{type(self)}(): Calling hook '{hook}'")
+
             # Alrighty-o, call the hook! (with or without keywords, we're not picky)
+            hook_fn = hook.hook
             if hook.with_kwargs:
-                hook_x = hook.hook(self, args, x)
+                hook_x = hook_fn(self, args, kwargs, x)
             else:
-                hook_x = hook.hook(self, args, kwargs, x)
+                hook_x = hook_fn(self, args, x)
 
             # Propagate the result, if any
             if hook_x is not None:
                 x = hook_x
-    except AttributeError:
-        # Nothing to do get
-        pass
 
-    # Done
-    return x
+        # Done
+        return x
+    return inner
 
 
+def _conv_init(init_func):
+    def inner(
+        self: cnn.Conv2d,
+        in_channels: Any,
+        out_channels: Any,
+        kernel_size: Any,
+        stride: int = 1,
+        padding: int = 0,
+        dilation: int = 1,
+        groups: int = 1,
+        bias: bool = True
+    ):
+        """
+            Override for the `cnn.Conv2d` constructor to make it remember its input channels.
+        """
 
-def _conv_init(
-    self: cnn.Conv2d,
-    in_channels: Any,
-    out_channels: Any,
-    kernel_size: Any,
-    stride: int = 1,
-    padding: int = 0,
-    dilation: int = 1,
-    groups: int = 1,
-    bias: bool = True
-):
-    """
-        Override for the `cnn.Conv2d` constructor to make it remember its input channels.
-    """
+        # Run the normal init
+        init_func(self, in_channels, out_channels, kernel_size, stride=stride, padding=padding, dilation=dilation, groups=groups, bias=bias)
 
-    # Run the normal init
-    self._untouched_init(in_channels, out_channels, kernel_size, stride=stride, padding=padding, dilation=dilation, groups=groups, bias=bias)
+        # Remember the input channels
+        self.in_channels = in_channels
 
-    # Remember the input channels
-    self.in_channels = in_channels
+    # Return the inner
+    return inner
 
 
 
@@ -171,79 +189,52 @@ def fix_debug():
 
     ...
 
-def fix_crypten():
+def fix_deps():
     """
-        Fixes missing functions in crypten.
+        Fixes missing functions in crypten and pytorch to make them more interoparable.
 
         Specifically, applies the following functions for this library:
-        - `fix_lib()` to `crypten`;
-        - `fix_init()` to `crypten.nn.init`;
-        - `fix_hook()` to `crypten.nn.Module`; and
+        - `fix_crypten()` to `crypten`;
+        - `fix_crypten_module()` to `crypten.nn.Module`; and
         - `fix_conv()` to `crypten.nn.Conv2d`.
+        - `fix_torch_tensor()` to `torch.Tensor`;
 
         Simply call this function \*once\* and you should be good to go.
     """
 
-    fix_lib(crypten)
-    # fix_init(cnn.init)
-    fix_hook(cnn.Module)
-    fix_conv(cnn.Conv2d)
+    fix_crypten()
+    fix_crypten_module()
+    fix_crypten_conv2d()
 
-def fix_lib(lib):
+    # Also fix torch lel
+    fix_torch_tensor()
+
+def fix_crypten():
     """
         Fixes stuff like `mean` and `sum` in the given Crypten library module.
 
         Specifically, injects:
         - `crypten.mean()` as an alias for `CrypTensor.mean()`
         - `crypten.sum()` as an alias for `CrypTensor.sum()`
-
-        Use it like so:
-        ```python
-        fix_lib(crypten)
-        ```
     """
 
     # Inject mean if it does not exist
+    if DEBUG: print("DEBUG: utils.fix_hook.fix_crypten(): Injecting 'crypten.mean()'")
     try:
-        getattr(lib, 'mean')
-        print("NOTE: utils.fix_hook.fix_lib(): Not fixing `mean` for given library as it apparently already exists")
+        getattr(crypten, 'mean')
+        if DEBUG: print("DEBUG: utils.fix_hook.fix_crypten(): Not fixing `mean` for given library as it apparently already exists")
     except AttributeError:
-        lib.mean = _mean
+        crypten.mean = _mean
 
     # Inject sum if it does not exist
+    if DEBUG: print("DEBUG: utils.fix_hook.fix_crypten(): Injecting 'crypten.sum()'")
     try:
-        getattr(lib, 'sum')
-        print("NOTE: utils.fix_hook.fix_lib(): Not fixing `sum` for given library as it apparently already exists")
+        getattr(crypten, 'sum')
+        if DEBUG: print("DEBUG: utils.fix_hook.fix_crypten(): Not fixing `sum` for given library as it apparently already exists")
     except AttributeError:
-        lib.sum = _sum
+        crypten.sum = _sum
 
-# def fix_init(init):
-#     """
-#         Fixes stuff like `_calculate_fan_in_and_fan_out` not existing in the given Crypten (init) module.
-
-#         Specifically, injects:
-#         - `crypten.nn.init._calculate_fan_in_and_fan_out()` as an alias for `torch.nn.init._calculate_fan_in_and_fan_out()`.
-#         - `crypten.nn.init.calculate_gain()` as an alias for `torch.nn.init.calculate_gain()`.
-
-#         Use it like so:
-#         ```python
-#         fix_init(cnn.init)
-#         ```
-#     """
-
-#     try:
-#         getattr(init, '_calculate_fan_in_and_fan_out')
-#         print("NOTE: utils.fix_hook.fix_init(): Not fixing `_calculate_fan_in_and_fan_out` for given library as it apparently already exists")
-#     except AttributeError:
-#         init._calculate_fan_in_and_fan_out = torch.nn.init._calculate_fan_in_and_fan_out
-
-#     try:
-#         getattr(init, 'calculate_gain')
-#         print("NOTE: utils.fix_hook.fix_init(): Not fixing `calculate_gain` for given library as it apparently already exists")
-#     except AttributeError:
-#         init.calculate_gain = torch.nn.init.calculate_gain
-
-def fix_hook(ty):
+def fix_crypten_module():
     """
         Fixes `register_forward_hook()` not existing in the given Crypten Module.
 
@@ -251,34 +242,49 @@ def fix_hook(ty):
         - `cnn.Module.register_forward_hook()`
         - `cnn.Module.apply()`
         - A wrapper around `cnn.Module.forward()` to implement the hooks. The old forward is re-injected as `cnn.Module._unhooked_forward()`.
-
-        Use it like so:
-        ```python
-        # Should be all you need, implements it for *all* Crypten modules
-        fix_hook(cnn.Module)
-        ```
     """
 
+    def inject_forward_in_all_subclasses(ty):
+        """
+            Injects a function in a type _and_ all its subclasses.
+        """
+
+        # Check if we inserted it before
+        if DEBUG: print(f"DEBUG: utils.fix_hook.fix_crypten_module(): Injecting '{ty}.forward()'")
+        try:
+            old_func = getattr(ty, "forward")
+            new_func = _forward_override(old_func)
+            if old_func == new_func:
+                if DEBUG: print(f"DEBUG: utils.fix_hook.fix_crypten_module(): Not fixing `forward` because it already exists")
+                return
+        except AttributeError:
+            pass
+
+        # Insert it in this type
+        ty.forward = new_func
+        # Now all its subclasses
+        for sty in ty.__subclasses__():
+            inject_forward_in_all_subclasses(sty)
+
+
     # Inject the functions if they haven't been injected already
+    if DEBUG: print("DEBUG: utils.fix_hook.fix_crypten_module(): Injecting 'crypten.nn.Module.register_forward_hook()'")
     try:
-        getattr(ty, 'register_forward_hook')
-        print("NOTE: utils.fix_hook.fix_hook(): Not fixing `register_forward_hook` for given module as it apparently already exists")
+        getattr(cnn.Module, 'register_forward_hook')
+        if DEBUG: print("DEBUG: utils.fix_hook.fix_crypten_module(): Not fixing `register_forward_hook` for given module as it apparently already exists")
     except AttributeError:
-        ty.register_forward_hook = _register_forward_hook
+        cnn.Module.register_forward_hook = _register_forward_hook
 
-    try:
-        getattr(ty, '_unhooked_forward')
-        print("NOTE: utils.fix_hook.fix_hook(): Not fixing `forward` override for given module as it apparently already exists (or rather, `_unhooked_forward` already exists)")
-    except AttributeError:
-        ty._unhooked_forward = cnn.Module.forward
-        ty.forward = _forward_override
-    try:
-        getattr(ty, "apply")
-        print("NOTE: utils.fix_hook.fix_hook(): Not fixing `apply` because it already exists")
-    except AttributeError:
-        ty.apply = ty._apply
+    inject_forward_in_all_subclasses(cnn.Module)
 
-def fix_conv(conv):
+    if DEBUG: print("DEBUG: utils.fix_hook.fix_crypten_module(): Injecting 'crypten.nn.Module.apply()'")
+    try:
+        getattr(cnn.Module, "apply")
+        if DEBUG: print("DEBUG: utils.fix_hook.fix_crypten_module(): Not fixing `apply` because it already exists")
+    except AttributeError:
+        cnn.Module.apply = cnn.Module._apply
+
+def fix_crypten_conv2d():
     """
         Fixes `in_channels` not existing in the given Crypten module.
 
@@ -292,8 +298,52 @@ def fix_conv(conv):
     """
 
     # Inject the wrapper around __init__
-    if getattr(conv, "__init__") is not _conv_init:
-        conv._untouched_init = cnn.Conv2d.__init__
-        conv.__init__ = _conv_init
+    if DEBUG: print("DEBUG: utils.fix_hook.fix_crypten_conv2d(): Injecting 'crypten.nn.Conv2d.__init__()'")
+    if getattr(cnn.Conv2d, "__init__") is not _conv_init:
+        cnn.Conv2d.__init__ = _conv_init(cnn.Conv2d.__init__)
     else:
-        print("NOTE: utils.fix_hook.fix_conv(): Not fixing `__init__` for given module as it is already overwritten")
+        if DEBUG: print("DEBUG: utils.fix_hook.fix_crypten_conv2d(): Not fixing `__init__` for given module as it is already overwritten")
+
+def fix_torch_tensor():
+    """
+        Fixes torch modules such that they have `x.conv2d()` functions, as required by Crypten.
+    """
+
+    def insert_func(module, attr, func):
+        """
+            Function that adds the given function as the given attribute in the given module.
+        """
+        try:
+            getattr(module, attr)
+            if DEBUG: print(f"DEBUG: utils.fix_hook.fix_torch_tensor(): Not fixing `{attr}` override for given module as it apparently already exists")
+        except AttributeError:
+            setattr(module, attr, func)
+
+    def _wrap_functional(func):
+        """
+            Why this function is necessary is beyond me, but else we get errors that the functional function gets incorrect kinda inputs (probably due to some `self`-like structure?)
+        """
+        def wrapper(*args, **kwargs):
+            # print(",".join([f"{a} ({type(a)})" for a in args]))
+            # print(",".join([f"{a}={kwargs[a]} ({type(kwargs[a])})" for a in kwargs]))
+            return func(*args, **kwargs)
+        return wrapper
+    def _wrap_batch_norm(input, weight, bias, running_mean, running_var, training, eps, momentum, inv_var=None):
+        # Reshuffle the arguments a little bit
+        # NOTE: So it looks like this inv_var is an optimisation trick to remember some computation from last time. I sincerely _hope_ so, since I'm not sure how to integrate it into pytorch shit lol
+        # if inv_var is not None:
+        #     print(f"WARNING: utils.fix_hook.fix_torch_tensor(): Batch normalization got given `inv_var`, but this is not supported in torch's version")
+        return F.batch_norm(input, running_mean=running_mean, running_var=running_var, weight=weight, bias=bias, training=training, momentum=momentum, eps=eps)
+
+    # Fix conv2d
+    if DEBUG: print("DEBUG: utils.fix_hook.fix_torch_tensor(): Injecting 'torch.Tensor.conv2d()'")
+    insert_func(torch.Tensor, "conv2d", _wrap_functional(F.conv2d))
+    # Fix batchnorm
+    if DEBUG: print("DEBUG: utils.fix_hook.fix_torch_tensor(): Injecting 'torch.Tensor.batchnorm()'")
+    insert_func(torch.Tensor, "batchnorm", _wrap_batch_norm)
+    # Fix avg_pool2d
+    if DEBUG: print("DEBUG: utils.fix_hook.fix_torch_tensor(): Injecting 'torch.Tensor.avg_pool2d()'")
+    insert_func(torch.Tensor, "avg_pool2d", _wrap_functional(F.avg_pool2d))
+    # Fix dropout
+    if DEBUG: print("DEBUG: utils.fix_hook.fix_torch_tensor(): Injecting 'torch.Tensor.dropout()'")
+    insert_func(torch.Tensor, "dropout", _wrap_functional(F.dropout))

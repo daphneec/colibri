@@ -18,7 +18,7 @@ from utils.common import get_device
 from utils.common import extract_item
 from utils.common import get_data_queue_size
 from utils.common import bn_calibration
-from utils.fix_hook import fix_crypten, fix_debug
+from utils.fix_hook import fix_deps, fix_debug
 from utils import dataflow
 from utils import secure_optim as optim
 from utils import secure_distributed as udist
@@ -32,7 +32,7 @@ from mmseg.validation import SegVal, keypoint_val
 
 
 # STOP THE PRESSES: Fix `cnn.Module`s not having some of the functions we expect (but would support)
-fix_crypten()
+fix_deps()
 fix_debug()
 
 
@@ -459,6 +459,7 @@ def train_val_test():
             mc.profiling(model, use_cuda=True)
         if 'cpu' in FLAGS.profiling:
             mc.profiling(model, use_cuda=False)
+    print(f"Has n_params? {hasattr(model, 'n_params')}")
 
     if FLAGS.dataset == 'cityscapes':
         (train_set, val_set, test_set) = seg_dataflow.cityscapes_datasets(FLAGS)

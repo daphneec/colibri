@@ -10,6 +10,7 @@ from models.secure_mobilenet_base import get_active_fn
 from models.secure_mobilenet_base import InvertedResidualChannels, InvertedResidualChannelsFused
 from models.secure_upsample import UpsampleNearest
 from mmseg.secure_utils import resize
+from mmseg.utils import resize as resize_insecure
 import json
 from utils import distributed as udist
 
@@ -340,7 +341,13 @@ class FuseModule(cnn.Module):
                             flag = 0
                         else:
                             if self.fuse_layers[i][j]:
-                                y = y + resize(
+                                # TODO cryptenify
+                                # y = y + resize(
+                                #     self.fuse_layers[i][j](x[j]),
+                                #     size=y.shape[2:],
+                                #     mode='bilinear',
+                                #     align_corners=False)
+                                y = y + resize_insecure(
                                     self.fuse_layers[i][j](x[j]),
                                     size=y.shape[2:],
                                     mode='bilinear',

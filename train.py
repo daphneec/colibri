@@ -451,6 +451,7 @@ def train_val_test():
             mc.profiling(model, use_cuda=True)
         if 'cpu' in FLAGS.profiling:
             mc.profiling(model, use_cuda=False)
+    print(f"Has n_params? {hasattr(model, 'n_params')}")
 
     if FLAGS.dataset == 'cityscapes':
         (train_set, val_set, test_set) = seg_dataflow.cityscapes_datasets(FLAGS)

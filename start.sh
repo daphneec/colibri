@@ -4,7 +4,7 @@
 # Created:
 #   05 Dec 2023, 13:04:13
 # Last edited:
-#   05 Dec 2023, 13:11:52
+#   12 Dec 2023, 10:24:25
 # Auto updated?
 #   Yes
 #
@@ -44,4 +44,7 @@ fi
 source ./venv/bin/activate || exit "$?"
 
 # Alright now hit pytorch
+if [[ "$path" =~ "cpu" ]]; then
+    export DEVICE_MODE="cpu"
+fi
 torchrun --nnodes 1 --nproc_per_node=1 --node_rank=0 "./$exec" "app:$path"
