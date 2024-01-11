@@ -10,6 +10,7 @@ import models.secure_mobilenet_base as mb
 import models.secure_hrnet as hr
 import models.secure_hrnet_base as hrb
 from models.secure_padding import ZeroPad2d
+from models.secure_multi_head_attention import MultiHeadAttention
 import models.secure_transformer as transformer
 from utils import distributed as udist
 from utils.config import DEVICE_MODE
@@ -82,7 +83,7 @@ def module_profiling(self, input, output, num_forwards, verbose):
     if not input:
         return
     # TODO cryptenify
-    if isinstance(self, cnn.MultiheadAttention) or isinstance(input[0], list) or isinstance(output, list):
+    if isinstance(self, MultiHeadAttention) or isinstance(input[0], list) or isinstance(output, list):
         pass
     else:
         ins = input[0].size()
@@ -206,7 +207,7 @@ def module_profiling(self, input, output, num_forwards, verbose):
         add_sub(self, self.linear2)
         self.name = self.__repr__()
     # TODO cryptenify
-    elif isinstance(self, cnn.MultiheadAttention):
+    elif isinstance(self, MultiHeadAttention):
         self.n_macs = 0
         self.n_params = 0
         self.n_seconds = 0

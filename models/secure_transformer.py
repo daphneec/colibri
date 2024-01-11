@@ -11,6 +11,7 @@ from torch import Tensor
 import crypten
 from crypten import nn as cnn, CrypTensor
 
+from models.secure_multi_head_attention import MultiHeadAttention
 from models.secure_upsample import interpolate_nearest
 
 
@@ -234,7 +235,8 @@ class TransformerEncoderLayer(cnn.Module):
         if dim_feedforward is None:
             dim_feedforward = d_model
 
-        self.self_attn = cnn.MultiheadAttention(d_model, nhead, dropout=dropout, bias=False)
+        # self.self_attn = MultiHeadAttention(d_model, nhead, dropout=dropout, bias=False)
+        self.self_attn = MultiHeadAttention(d_model, nhead, dropout=dropout)
 
         # Implementation of Feedforward model
         self.linear1 = cnn.Linear(d_model, dim_feedforward, bias=False)
