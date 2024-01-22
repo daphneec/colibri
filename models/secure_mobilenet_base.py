@@ -524,8 +524,13 @@ class InvertedResidualChannels(cnn.Module):
         return tmp
 
     def __repr__(self):
+        # return ('{}({}, {}, channels={}, kernel_sizes={}, expand={},'
+        #         ' stride={})').format(self._get_name(), self.input_dim,
+        #                               self.output_dim, self.channels,
+        #                               self.kernel_sizes, self.expand,
+        #                               self.stride)
         return ('{}({}, {}, channels={}, kernel_sizes={}, expand={},'
-                ' stride={})').format(self._get_name(), self.input_dim,
+                ' stride={})').format("InvertedResidualChannels", self.input_dim,
                                       self.output_dim, self.channels,
                                       self.kernel_sizes, self.expand,
                                       self.stride)

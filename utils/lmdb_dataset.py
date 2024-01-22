@@ -27,6 +27,10 @@ class ImageFolderLMDB(Dataset):
     """Lmdb dataset."""
 
     def __init__(self, db_path, transform=None, target_transform=None):
+        # Fix the path to something absolute
+        if not os.path.isabs(db_path):
+             db_path = os.path.join(os.getcwd(), db_path)
+
         self.db_path = db_path
         self.env = lmdb.open(db_path,
                              subdir=os.path.isdir(db_path),

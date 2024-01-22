@@ -12,6 +12,7 @@ import crypten
 from crypten import nn as cnn, CrypTensor
 
 from models.secure_multi_head_attention import MultiHeadAttention
+from models.secure_layernorm import LayerNorm
 from models.secure_upsample import interpolate_nearest
 
 
@@ -243,8 +244,8 @@ class TransformerEncoderLayer(cnn.Module):
         self.dropout = cnn.Dropout(dropout)
         self.linear2 = cnn.Linear(dim_feedforward, d_model, bias=False)
 
-        self.norm1 = cnn.LayerNorm(d_model)
-        self.norm2 = cnn.LayerNorm(d_model)
+        self.norm1 = LayerNorm(d_model)
+        self.norm2 = LayerNorm(d_model)
         self.dropout1 = cnn.Dropout(dropout)
         self.dropout2 = cnn.Dropout(dropout)
 
@@ -301,9 +302,8 @@ class TransformerDecoderLayer(cnn.Module):
         self.dropout = cnn.Dropout(dropout)
         self.linear2 = cnn.Linear(dim_feedforward, d_model, bias=False)
 
-        # TODO cryptenify
-        self.norm1 = cnn.LayerNorm(d_model)
-        self.norm2 = cnn.LayerNorm(d_model)
+        self.norm1 = LayerNorm(d_model)
+        self.norm2 = LayerNorm(d_model)
         self.dropout1 = cnn.Dropout(dropout)
         self.dropout2 = cnn.Dropout(dropout)
 

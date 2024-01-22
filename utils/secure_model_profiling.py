@@ -11,6 +11,7 @@ import models.secure_hrnet as hr
 import models.secure_hrnet_base as hrb
 from models.secure_padding import ZeroPad2d
 from models.secure_multi_head_attention import MultiHeadAttention
+from models.secure_layernorm import LayerNorm
 import models.secure_transformer as transformer
 from utils import distributed as udist
 from utils.config import DEVICE_MODE
@@ -77,7 +78,7 @@ def module_profiling(self, input, output, num_forwards, verbose):
         m.n_params += getattr(sub_op, 'n_params', 0)
         m.n_seconds += getattr(sub_op, 'n_seconds', 0)
 
-    _run_forward = functools.partial(run_forward, num_forwards=num_forwards)
+    # _run_forward = functools.partial(run_forward, num_forwards=num_forwards)
     # if isinstance(self, (hr.ParallelModule, hr.FuseModule, hr.HeadModule)) \
     #     or (isinstance(self, nn.Sequential) and isinstance(self[0], hr.ParallelModule)):
     if not input:
@@ -98,32 +99,32 @@ def module_profiling(self, input, output, num_forwards, verbose):
                        self.kernel_size[1] * outs[2] * outs[3] //
                        self.groups) * outs[0]
         self.n_params = get_params(self)
-        self.n_seconds = _run_forward(self, input)
+        self.n_seconds = 1
         self.name = conv_module_name_filter(self.__repr__())
     # TODO cryptenify
-    elif isinstance(self, cnn.ConvTranspose2d):
-        self.n_macs = (ins[1] * outs[1] * self.kernel_size[0] *
-                       self.kernel_size[1] * outs[2] * outs[3] //
-                       self.groups) * outs[0]
-        self.n_params = get_params(self)
-        self.n_seconds = _run_forward(self, input)
-        self.name = conv_module_name_filter(self.__repr__())
+    # elif isinstance(self, nn.ConvTranspose2d):
+    #     self.n_macs = (ins[1] * outs[1] * self.kernel_size[0] *
+    #                    self.kernel_size[1] * outs[2] * outs[3] //
+    #                    self.groups) * outs[0]
+    #     self.n_params = get_params(self)
+    #     self.n_seconds = 1
+    #     self.name = conv_module_name_filter(self.__repr__())
     elif isinstance(self, cnn.Linear):
         self.n_macs = ins[1] * outs[1] * outs[0]
         self.n_params = get_params(self)
-        self.n_seconds = _run_forward(self, input)
+        self.n_seconds = 1
         self.name = self.__repr__()
     elif isinstance(self, cnn.AvgPool2d):
         # NOTE: this function is correct only when stride == kernel size
         self.n_macs = ins[1] * ins[2] * ins[3] * ins[0]
         self.n_params = 0
-        self.n_seconds = _run_forward(self, input)
+        self.n_seconds = 1
         self.name = self.__repr__()
     elif isinstance(self, cnn.AdaptiveAvgPool2d):
         # NOTE: this function is correct only when stride == kernel size
         self.n_macs = ins[1] * ins[2] * ins[3] * ins[0]
         self.n_params = 0
-        self.n_seconds = _run_forward(self, input)
+        self.n_seconds = 1
         self.name = self.__repr__()
     elif isinstance(self, mb.SqueezeAndExcitation):
         self.n_macs = ins[1] * ins[2] * ins[3] * ins[0]
@@ -256,7 +257,7 @@ def module_profiling(self, input, output, num_forwards, verbose):
         ignore_zeros_t = [
             cnn.BatchNorm2d,
             # TODO cryptenify
-            cnn.LayerNorm,
+            LayerNorm,
             cnn.Dropout2d,
             cnn.Dropout,
             cnn.Sequential,

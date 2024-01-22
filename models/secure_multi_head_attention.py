@@ -1,10 +1,11 @@
+#!/usr/bin/env python
 # SECURE MULTI HEAD ATTENTION.py
 #   by Lut99
 #
 # Created:
 #   11 Jan 2024, 15:41:39
 # Last edited:
-#   11 Jan 2024, 17:03:34
+#   22 Jan 2024, 11:41:26
 # Auto updated?
 #   Yes
 #
@@ -21,6 +22,41 @@ import crypten
 import crypten.nn as cnn
 import numpy as np
 import torch
+
+
+##### TESTS #####
+def test_multi_head_attention():
+    """
+        Implements a unit test for the multi-head attention.
+    """
+
+    import torch.nn as nn
+    crypten.init()
+
+    # Setup some random layers
+    gold_layer = nn.MultiheadAttention(6, 2, dropout=0.2)
+    cryp_layer = MultiHeadAttention(6, 2, dropout=0.2).encrypt()
+
+    # Let's compare modules
+    for m in gold_layer.modules():
+        print(f"gold : {m}")
+    for m in cryp_layer.modules():
+        print(f"cryp : {m}")
+
+    # Initialze random input and a Crypten-shared counterpart
+    query, key, value = torch.tensor(np.random.rand(6, 6), dtype=torch.float32), torch.tensor(np.random.rand(6, 6), dtype=torch.float32), torch.tensor(np.random.rand(6, 6), dtype=torch.float32)
+    cquery, ckey, cvalue = crypten.cryptensor(query), crypten.cryptensor(key), crypten.cryptensor(value)
+
+    # Run it thru the layers
+    gold1, _ = gold_layer.forward(query, key, value)
+    cryp1, _, _ = cryp_layer.forward(cquery, ckey, cvalue, output_attentions=True)
+    cryp1 = cryp1.get_plain_text()
+
+    # Print some comparisons
+    print("Gold attention outputs:\n" + (80 * "-") + "\n" + str(gold1) + "\n" + (80 * "-") + "\n\nCrypten attention outputs\n" + (80 * "-") + "\n" + str(cryp1) + "\n" + (80 * "-") + "\n")
+
+
+
 
 
 ##### HELPER FUNCTIONS #####
@@ -88,22 +124,31 @@ def prune_linear_layer(layer: cnn.Linear, index: typing.Union[torch.LongTensor, 
 
 
 
-def scaled_dot_product_attention(q, k, v, mask, dropout_p=0.0, attention_mask=None, head_mask=None):
+def scaled_dot_product_attention(q, k, v, dropout_p=0.0, attention_mask=None, head_mask=None):
+    # Decide if we're running Crypten in encrypted mode
+    is_encrypted = isinstance(q, crypten.CrypTensor)
+
     # calculate attention
-    matmul_qk = crypten.matmul(q, k.permute(0, 1, 3, 2))
+    if isinstance(q, crypten.CrypTensor):
+        matmul_qk = q.matmul(k.permute([0, 1, 3, 2]))
+    else:
+        matmul_qk = torch.matmul(q, k.permute(0, 1, 3, 2))
 
     dk = k.shape[-1]
     scaled_attention_logits = matmul_qk / np.sqrt(dk)
 
-    if mask is not None:
-        nd, ns = scaled_attention_logits.size(-2), scaled_attention_logits.size(-1)
-        scaled_attention_logits += mask[ns - nd : ns, :ns] * -1e4
+    # if mask is not None:
+    #     nd, ns = scaled_attention_logits.size(-2), scaled_attention_logits.size(-1)
+    #     scaled_attention_logits += mask[ns - nd : ns, :ns] * -1e4
 
     if attention_mask is not None:
         # Apply the attention mask
         scaled_attention_logits = scaled_attention_logits + attention_mask
 
-    attention_weights = crypten.softmax(scaled_attention_logits, dim=-1)
+    softmax = cnn.Softmax(-1)
+    if is_encrypted:
+        softmax = softmax.encrypt()
+    attention_weights = softmax.forward(scaled_attention_logits)
 
     # Mask heads if we want to
     # ...we can leave our friends behind, because if they don't dance and if they don't dance they are no friends of mine
@@ -111,8 +156,14 @@ def scaled_dot_product_attention(q, k, v, mask, dropout_p=0.0, attention_mask=No
         attention_weights = attention_weights * head_mask
 
     # Take our chance and apply the dropout!
-    attention_weights = cnn.Dropout(dropout_p, False).forward(attention_weights)
-    output = crypten.matmul(attention_weights, v)
+    dropout = cnn.Dropout(dropout_p, False)
+    if is_encrypted:
+        dropout = dropout.encrypt()
+    attention_weights = dropout.forward(attention_weights)
+    if isinstance(attention_weights, crypten.CrypTensor):
+        output = attention_weights.matmul(v)
+    else:
+        output = crypten.matmul(attention_weights, v)
 
     return output, attention_weights
 
@@ -164,7 +215,6 @@ class MultiHeadAttention(cnn.Module):
         q,
         k,
         value,
-        mask,
         layer_past=None,
         attn_mask=None,
         head_mask=None,
@@ -190,7 +240,7 @@ class MultiHeadAttention(cnn.Module):
         else:
             present = (None,)
 
-        output = scaled_dot_product_attention(q, k, value, mask, self.dropout_p, attn_mask, head_mask)
+        output = scaled_dot_product_attention(q, k, value, self.dropout_p, attn_mask, head_mask)
         scaled_attention = output[0].permute([0, 2, 1, 3])
         attn = output[1]
         original_size_attention = scaled_attention.reshape(batch_size, -1, self.d_model_size)
@@ -201,3 +251,11 @@ class MultiHeadAttention(cnn.Module):
             outputs = outputs + (attn,)
 
         return outputs
+
+
+
+
+
+##### ENTRYPOINT #####
+if __name__ == "__main__":
+    test_multi_head_attention()

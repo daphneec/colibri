@@ -4,7 +4,7 @@
 # Created:
 #   09 Nov 2023, 10:41:00
 # Last edited:
-#   12 Dec 2023, 14:40:16
+#   22 Jan 2024, 16:22:07
 # Auto updated?
 #   Yes
 #
@@ -14,7 +14,7 @@
 
 import os
 import sys
-from typing import Any, Callable, Dict, Optional, Tuple, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
 
 import crypten
 import crypten.nn as cnn
@@ -33,6 +33,7 @@ class Hook:
         Wrapper around a (forward) hook that also stores some settings.
     """
 
+    ident: int
     hook: Union[
         Callable[[T, Tuple[Any, ...], Any], Optional[Any]],
         Callable[[T, Tuple[Any, ...], Dict[str, Any], Any], Optional[Any]],
@@ -42,6 +43,7 @@ class Hook:
 
     def __init__(
         self,
+        ident: int,
         hook: Union[
             Callable[[T, Tuple[Any, ...], Any], Optional[Any]],
             Callable[[T, Tuple[Any, ...], Dict[str, Any], Any], Optional[Any]],
@@ -53,11 +55,13 @@ class Hook:
             Constructor for the Hook that creates a new object out of it.
 
             # Arguments
+            - `ident`: Some identifier that allows the [`HookHandle`] to properly refer to this Hook.
             - `hook`: The hook/callback to store.
             - `with_kwargs`: Whether to call it with keyword arguments given at some other place or not, not sure what to do with this.
             - `always_call`: Whether to always call it... which, I think, would be sensible? Edit: No I'm assuming these are also called when the forward pass crashes. Let's also warn for this.
         """
 
+        self.ident = ident
         self.hook = hook
         self.with_kwargs = with_kwargs
         self.always_call = always_call
@@ -65,6 +69,42 @@ class Hook:
         # Hit some warnings about stuff unimplemented
         if self.always_call:
             print("WARNING: cnn.Module.register_forward_hook(): Asked to add a forward hook with `always_call` set, but the custom Crypten implementation does nothing with this.", file=sys.stderr)
+
+class HookHandle:
+    """
+        Handle such that [`Hook`]s may be removed.
+    """
+
+    hooks: List[Hook]
+    ident: int
+
+    def __init__(self, hooks: List[Hook], ident: int):
+        """
+            Constructor for the HookHandle.
+
+            # Arguments
+            - `hooks`: The list from which to remove a handle when the time comes.
+            - `ident`: The identifier of the hook to remove when the time comes.
+        """
+
+        self.hooks = hooks
+        self.ident = ident
+
+    def remove(self):
+        """
+            Removes the referred hook from the parent class.
+        """
+
+        # Find the index of the item we want
+        idx = None
+        for i, hook in enumerate(self.hooks):
+            if hook.ident == self.ident:
+                idx = i
+                break
+        if idx is None: raise RuntimeError(f"Did not find hook '{self.ident}' in list of hooks to remove")
+
+        # Now remove that element
+        self.hooks.pop(idx)
 
 
 
@@ -83,6 +123,7 @@ def _sum(tensor, *args, **kwargs):
     tensor.sum(*args, **kwargs)
 
 
+counter = 0
 def _register_forward_hook(
     self,
     hook: Union[
@@ -98,6 +139,8 @@ def _register_forward_hook(
         Registers new hooks that are called *after* the forward pass has commenced.
     """
 
+    global counter
+
     # if DEBUG: print(f"DEBUG: utils.fix_hook._register_forward_hook{type(self)}(): Registering forward hook '{hook}'")
 
     # Ensure the hooks list exist for this module
@@ -106,17 +149,17 @@ def _register_forward_hook(
     except AttributeError:
         self._forward_hooks = []
 
-    # Build the Hook object
-    handle = Hook(hook, with_kwargs, always_call)
-
     # Either pre- or append the hook
+    hook = Hook(counter, hook, with_kwargs, always_call)
     if prepend:
-        self._forward_hooks.insert(0, handle)
+        self._forward_hooks.insert(0, hook)
     else:
-        self._forward_hooks.append(handle)
+        self._forward_hooks.append(hook)
 
-    # Alrighty done
-    return
+    # Alrighty done; return a handle to remove it later
+    handle = HookHandle(self._forward_hooks, counter)
+    counter += 1
+    return handle
 
 def _forward_override(forward_func):
     """
@@ -176,6 +219,11 @@ def _conv_init(init_func):
 
         # Remember the input channels
         self.in_channels = in_channels
+        # Remember the kernel size
+        if type(kernel_size) == int:
+            self.kernel_size = (kernel_size, kernel_size)
+        else:
+            self.kernel_size = kernel_size
 
     # Return the inner
     return inner
