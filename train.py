@@ -75,7 +75,6 @@ def shrink_model(model_wrapper,
     if optimizer is not None:
         assert set(optimizer.param_groups[0]['params']) == set(
             model.parameters())
-
     mc.model_profiling(model,
                        FLAGS.image_size,
                        FLAGS.image_size,
