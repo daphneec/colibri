@@ -1,5 +1,85 @@
 # HR-NAS: Searching Efficient High-Resolution Neural Architectures with Lightweight Transformers (CVPR21 Oral)
 
+
+## Recent updates
+Some recent updates have been done to make it work with [Crypten](https://crypten.ai/). In addition, some files have been changed to allow better compatability with non-GPU machines for local testing and general easier interaction.
+
+### Installation procedure
+To run the framework locally, download this repository; e.g.,
+```bash
+git clone https://github.com/daphneec/colibri && cd colibri
+```
+Then, you can install the required pip packages using:
+```bash
+./install.sh
+```
+
+Depending on your distribution, you can also automatically install required dependencies. The following platforms are currently supported:
+- Debian/Ubuntu: run the script with `./install.sh debian` or `./install.sh ubuntu` to automatically install dependencies using `apt`.
+
+For unsupported platforms, feel free to adapt `install.sh` yourself an make a PR :) Otherwise, install the following dependencies manually:
+- [Python](https://python.org) (with `pip` and `venv`) (>= 3.9)
+- [libjpeg](https://libjpeg.sourceforge.net/)
+- [zlib](https://z-lib.io/)
+- [OpenGL](https://www.opengl.org/)
+
+Then you can run the script as above to install the pip packages.
+
+> If you intent to install `requirements.txt` manually, note that `start.sh` below assumes you have a local virtual environment called `venv`. The following steps are taken by the `install.sh` script to make this happen:
+> ```bash
+> python3 -m venv ./venv
+> . venv/bin/activate
+> pip3 install -r requirements.txt
+> ```
+
+
+### Running
+To run the project, use the `start.sh` script to run it.
+
+It has the following arguments:
+```
+start.sh [normal|secure] <PATH_TO_CONFIG_YAML>
+```
+
+If you want to run the framework _without_ Crypten, use the `normal` keyword to the `start.sh` script.  
+If you want to run _with_ Crypten use the `secure` keyword.
+
+Then, dependening on which dataset you want to use (see below how to install them), select the appropriate configuration file in the `configs` directory. In addition to the ones normally provided by HR-NAS, there are also config files prefixed with `secure_`, which can only be used in the `secure` mode. In addition, files prefixed with `cpu_` are modified to make the framework run in a mode that doesn't require a GPU.
+
+For example, to run a non-Crypten version of a CoCo dataset:
+```bash
+./start.sh normal configs/keypoint_coco.yml
+```
+Or, to run a Crypten-modified ImageNet dataset using CPU-only modifications:
+```bash
+./start.sh secure configs/secure_cpu_cls_imagenet.yml
+```
+
+
+### Modifications
+This version of the framework shows the following modifications over those of the forked repository:
+1. _Crypten-specific layers_
+    1. Added lots of Crypten-specific counterparts (all Python files starting with `secure_`).
+        - For specific changes, use `diff --color -u <file>.py secure_<file>.py`
+    2. Custom `LayerNorm` layer to implement Crypten-compatible version (`models/secure_layernorm.py`).
+        - Implemented in terms of `BatchNorm` using transposes.
+    3. Custom `MultiHeadAttention` layer to implement Crypten-compatible version (`models/secure_multi_head_attention.py`).
+        - Taken from MPC Former and adapted for Crypten and this specific use-case.
+    4. Custom `ZeroPad2d` layer to implement Crypten-compatible version (`models/secure_padding.py`).
+    - Simply thin wrapper around `crypten.nn.ConstantPad`.
+    5. Custom `UpsampleNearest` layer to implement Crypten-compatible `Upsample(type="nearest")` layer (`models/secure_upsample.py`).
+        - Implemented using custom algorithm to emulate same behaviour.
+2. _Other fixes_
+    1. Added `secure_`, `cpu_` and `secure_cpu_` files to the `configs/` directory.
+    2. Changed parts of the framework to work with CPU-only mode (`common.py`, `train.py`, `val.py`, `validation.py`, `mmseg/validation.py`, `utils/dataflow.py`, `utils/distributed.py`, `utils/model_profiling.py`, and any `secure_` version of these files).
+    3. Fixed broken dependencies in `requirements.txt`.
+    4. Fixed broken usage of updated pickle package (`utils/lmdb_dataset.py`).
+    5. Added option to generate fake `cls_imagenet.yml`-compatible dataset with `tools/generate_fake_data.py` (note: change the dataset type to the non-lmdb version!).
+3. _Convenience additions_
+    1. Added scripts for `install.sh`ing, `start.sh`ing and `clean.sh`ing.
+
+Plus other stuff I have not mention here, but is probably small and insignificant. See diffs with `secure_` version with non-`secure_` version for specific changes.
+
 ## Environment
 Require Python3, CUDA>=10.1, and torch>=1.4, all dependencies are as follows:
 ```shell script
