@@ -2,7 +2,7 @@
 log_interval_detail: 2000
 
 # data related, check `utils/dataflow.py`
-dataset: imagenet1k_lmdb  # different dataset, could be one of ['imagenet1k', 'imagenet1k_lmdb']
+dataset: imagenet1k # _lmdb  # different dataset, could be one of ['imagenet1k', 'imagenet1k_lmdb']
 data_transforms: imagenet1k_mnas_bicubic  # preprocessing strategy
 data_loader: imagenet1k_basic  # 'imagenet1k_basic' only
 # data_loader_workers: 62  # number of total workers
