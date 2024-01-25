@@ -5,16 +5,16 @@ import logging
 import functools
 import math
 import numpy as np
+
+import crypten
+from crypten import nn as cnn
 import torch
-from torch import nn
-from torch.nn import functional as F
 
 import models.compress_utils as cu
 from utils.common import add_prefix
 from utils.common import get_device
+from models.transformer import Transformer
 
-import crypten.nn as cnn
-from models.secure_transformer import secure_Transformer
 
 def _make_divisible(v, divisor, min_value=None):
     """Make channels divisible to divisor.
@@ -79,7 +79,7 @@ class Swish(cnn.Module):
     """
 
     def forward(self, x):
-        return x * cnn.Sigmoid(x)
+        return x * cnn.Sigmoid().forward(x)
 
 
 class HSwish(object):
@@ -89,7 +89,7 @@ class HSwish(object):
     """
 
     def forward(self, x):
-        return x * cnn.ReLU6(x + 3, False).div_(6)
+        return x * cnn.ReLU6(True).forward(x + 3).div_(6)
 
 
 class SqueezeAndExcitation(cnn.Module):
@@ -111,7 +111,7 @@ class SqueezeAndExcitation(cnn.Module):
     def forward(self, x):
         se_tensor = x.mean(self.spatial_dims, keepdim=True)
         se_tensor = self.se_expand(self.active_fn(self.se_reduce(se_tensor)))
-        return cnn.Sigmoid(se_tensor) * x
+        return cnn.Sigmoid().forward(se_tensor) * x
         # return torch.sigmoid(se_tensor) + x
 
     def __repr__(self):
@@ -138,6 +138,7 @@ class ConvBNReLU(cnn.Sequential):
             batch_norm_kwargs = {}
         if not padding:
             padding = (kernel_size - 1) // 2
+        # print([tensor.grad_fn for tensor in list(in_planes.parameters()) + list(out_planes.parameters())])
         super(ConvBNReLU, self).__init__(
             cnn.Conv2d(in_planes,
                       out_planes,
@@ -203,10 +204,10 @@ class InvertedResidualChannelsFused(cnn.Module):
                                       bias=False)
 
         if self.use_transformer and self.use_res_connect:
-            self.transformer = secure_Transformer(8, inp)
+            self.transformer = Transformer(8, inp)
 
         if self.use_transformer and self.downsampling_transformer and not self.use_res_connect:
-            self.transformer = secure_Transformer(8, inp, oup, downsampling=(stride == 2))
+            self.transformer = Transformer(8, inp, oup, downsampling=(stride == 2))
 
     def _build(self, hidden_dims, kernel_sizes, expand, se_ratio):
         _batch_norm_kwargs = self.batch_norm_kwargs \
@@ -300,7 +301,7 @@ class InvertedResidualChannelsFused(cnn.Module):
         res = self.expand_conv(x)
         res = [op(res) for op in self.depth_ops]
         if len(res) != 1:
-            res = torch.cat(res, dim=1)
+            res = crypten.cat(res, dim=1)
         else:
             res = res[0]
         res = self.se_op(res)
@@ -375,21 +376,21 @@ class InvertedResidualChannels(cnn.Module):
                 hidden_dims = transformer_dict[0]
                 transformer_dict.pop(0)
                 if hidden_dims:
-                    self.transformer = secure_Transformer(hidden_dims, inp)
+                    self.transformer = Transformer(hidden_dims, inp)
                 else:
                     self.transformer = None
             else:
-                self.transformer = secure_Transformer(64, inp)
+                self.transformer = Transformer(64, inp)
         if self.use_transformer and self.downsampling_transformer and not self.use_res_connect:
             if transformer_dict:
                 hidden_dims = transformer_dict[0]
                 transformer_dict.pop(0)
                 if hidden_dims:
-                    self.transformer = secure_Transformer(hidden_dims, inp, oup, downsampling=(stride == 2))
+                    self.transformer = Transformer(hidden_dims, inp, oup, downsampling=(stride == 2))
                 else:
                     self.transformer = None
             else:
-                self.transformer = secure_Transformer(64, inp, oup, downsampling=(stride == 2))
+                self.transformer = Transformer(64, inp, oup, downsampling=(stride == 2))
         if not self.use_res_connect:
             # assert (self.input_dim % min(self.input_dim, self.output_dim) == 0
             #         and self.output_dim % min(self.input_dim, self.output_dim) == 0)
@@ -523,8 +524,13 @@ class InvertedResidualChannels(cnn.Module):
         return tmp
 
     def __repr__(self):
+        # return ('{}({}, {}, channels={}, kernel_sizes={}, expand={},'
+        #         ' stride={})').format(self._get_name(), self.input_dim,
+        #                               self.output_dim, self.channels,
+        #                               self.kernel_sizes, self.expand,
+        #                               self.stride)
         return ('{}({}, {}, channels={}, kernel_sizes={}, expand={},'
-                ' stride={})').format(self._get_name(), self.input_dim,
+                ' stride={})').format("InvertedResidualChannels", self.input_dim,
                                       self.output_dim, self.channels,
                                       self.kernel_sizes, self.expand,
                                       self.stride)
@@ -548,10 +554,10 @@ class InvertedResidualChannels(cnn.Module):
 def get_active_fn(name):
     """Select activation function."""
     active_fn = {
-        'cnn.ReLU6': functools.partial(cnn.ReLU6),
-        'cnn.ReLU': functools.partial(cnn.ReLU),
-        'cnn.Swish': Swish,
-        'cnn.HSwish': HSwish,
+        'nn.ReLU6': functools.partial(cnn.ReLU6),
+        'nn.ReLU': functools.partial(cnn.ReLU),
+        'nn.Swish': Swish,
+        'nn.HSwish': HSwish,
     }[name]
     return active_fn
 
@@ -585,21 +591,27 @@ def init_weights_mnas(m):
         if m.groups == m.in_channels:  # depthwise conv
             fan_out = m.weight[0][0].numel()
         else:
-            _, fan_out = cnn.init._calculate_fan_in_and_fan_out(m.weight)
-        gain = cnn.init.calculate_gain('relu')
+            # TODO cryptenify
+            _, fan_out = torch.nn.init._calculate_fan_in_and_fan_out(m.weight)
+        # TODO cryptenify
+        gain = torch.nn.init.calculate_gain('relu')
         std = gain / math.sqrt(fan_out)
-        cnn.init.normal_(m.weight, 0.0, std)
-        if m.bias is not None:
-            cnn.init.zeros_(m.bias)
+        with crypten.no_grad():
+            cnn.init.normal_(m.weight, 0.0, std)
+            if m.bias is not None:
+                cnn.init.zeros_(m.bias)
     elif isinstance(m, cnn.BatchNorm2d):
-        cnn.init.ones_(m.weight)
-        cnn.init.zeros_(m.bias)
-    elif isinstance(m, cnn.Linear):
-        _, fan_out = cnn.init._calculate_fan_in_and_fan_out(m.weight)
-        init_range = 1.0 / np.sqrt(fan_out)
-        cnn.init.uniform_(m.weight, -init_range, init_range)
-        if m.bias is not None:
+        with crypten.no_grad():
+            cnn.init.ones_(m.weight)
             cnn.init.zeros_(m.bias)
+    elif isinstance(m, cnn.Linear):
+        # TODO cryptenify
+        with crypten.no_grad():
+            _, fan_out = torch.nn.init._calculate_fan_in_and_fan_out(m.weight)
+            init_range = 1.0 / np.sqrt(fan_out)
+            cnn.init.uniform_(m.weight, -init_range, init_range)
+            if m.bias is not None:
+                cnn.init.zeros_(m.bias)
 
 
 def output_network(model):

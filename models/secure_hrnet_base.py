@@ -3,15 +3,14 @@ from __future__ import division
 from __future__ import print_function
 
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
+import crypten.nn as cnn
 import collections
 import numbers
-
-import crypten.nn as cnn
 from models.secure_mobilenet_base import _make_divisible
 from models.secure_mobilenet_base import get_active_fn
 from models.secure_mobilenet_base import InvertedResidualChannels
+from models.secure_upsample import UpsampleNearest
+
 
 __all__ = ['HighResolutionNetBase']
 
@@ -24,7 +23,7 @@ class InvertedResidual(InvertedResidualChannels):
                  stride,
                  expand_ratio=6,
                  kernel_sizes=[3, 5, 7],
-                 active_fn=get_active_fn('cnn.ReLU'),
+                 active_fn=get_active_fn('nn.ReLU'),
                  batch_norm_kwargs={'momentum': 0.1, 'eps': 1e-5}):
 
         def _expand_ratio_to_hiddens(expand_ratio):
@@ -76,7 +75,7 @@ class BasicBlock(cnn.Module):
                  expand_ratio=4,
                  kernel_sizes=[3, 5, 7],
                  batch_norm_kwargs={'momentum': 0.1, 'eps': 1e-5},
-                 active_fn=get_active_fn('cnn.ReLU6')):
+                 active_fn=get_active_fn('nn.ReLU6')):
         super(BasicBlock, self).__init__()
         self.conv1 = block(
             inplanes,
@@ -96,7 +95,7 @@ class BasicBlock(cnn.Module):
         #     stride=1,
         #     batch_norm_kwargs=batch_norm_kwargs,
         #     active_fn=active_fn)
-        # self.bn2 = cnn.BatchNorm2d(planes, momentum=BN_MOMENTUM)
+        # self.bn2 = nn.BatchNorm2d(planes, momentum=BN_MOMENTUM)
         self.downsample = downsample
         self.stride = stride
 
@@ -176,7 +175,7 @@ class HighResolutionModule(cnn.Module):
         self.branches = self._make_branches(
             num_branches, blocks, num_blocks, num_channels)
         self.fuse_layers = self._make_fuse_layers()
-        self.relu = cnn.ReLU(False)
+        self.relu = cnn.ReLU()
 
     def _check_branches(self, num_branches, blocks, num_blocks,
                         num_inchannels, num_channels):
@@ -248,7 +247,7 @@ class HighResolutionModule(cnn.Module):
                                   bias=False),
                         cnn.BatchNorm2d(num_inchannels[i],
                                        momentum=BN_MOMENTUM),
-                        cnn.Upsample(scale_factor=2 ** (j - i), mode='nearest')))
+                        UpsampleNearest(scale_factor=2 ** (j - i))))
                 elif j == i:
                     fuse_layer.append(None)
                 else:
@@ -260,7 +259,7 @@ class HighResolutionModule(cnn.Module):
                                 InvertedResidual(num_inchannels[j],
                                           num_outchannels_conv3x3,
                                           2),
-                                # cnn.BatchNorm2d(num_outchannels_conv3x3,
+                                # nn.BatchNorm2d(num_outchannels_conv3x3,
                                 #                momentum=BN_MOMENTUM)
                             ))
                         else:
@@ -269,9 +268,9 @@ class HighResolutionModule(cnn.Module):
                                 InvertedResidual(num_inchannels[j],
                                           num_outchannels_conv3x3,
                                           2),
-                                # cnn.BatchNorm2d(num_outchannels_conv3x3,
+                                # nn.BatchNorm2d(num_outchannels_conv3x3,
                                 #                momentum=BN_MOMENTUM),
-                                cnn.ReLU(False)))
+                                cnn.ReLU()))
                     fuse_layer.append(cnn.Sequential(*conv3x3s))
             fuse_layers.append(cnn.ModuleList(fuse_layer))
 
@@ -318,7 +317,7 @@ class HighResolutionNetBase(cnn.Module):
                  bn_momentum=0.1,
                  bn_epsilon=1e-5,
                  dropout_ratio=0.2,
-                 active_fn='cnn.ReLU6',
+                 active_fn='nn.ReLU6',
                  block='InvertedResidualChannels',
                  width_mult=1.0,
                  round_nearest=8,
@@ -431,7 +430,7 @@ class HighResolutionNetBase(cnn.Module):
                 InvertedResidual(in_channels,
                           out_channels,
                           2),
-                # cnn.BatchNorm2d(out_channels, momentum=BN_MOMENTUM),
+                # nn.BatchNorm2d(out_channels, momentum=BN_MOMENTUM),
                 cnn.ReLU()
             )
 
@@ -576,11 +575,13 @@ class HighResolutionNetBase(cnn.Module):
 
         y = self.final_layer(y)
 
+        # TODO cryptenify?
         if torch._C._get_tracing_state():
             y = y.flatten(start_dim=2).mean(dim=2)
         else:
-            y = F.avg_pool2d(y, kernel_size=y.size()
-            [2:]).view(y.size(0), -1)
+            # y = F.avg_pool2d(y, kernel_size=y.size()
+            # [2:]).view(y.size(0), -1)
+            y = cnn.AvgPool2d(kernel_size=y.size()[2:]).forward(y).view(y.size(0), -1)
 
         y = self.classifier(y)
         return y

@@ -23,7 +23,7 @@ class InvertedResidual(InvertedResidualChannels):
                  stride,
                  expand_ratio=6,
                  kernel_sizes=[3, 5, 7],
-                 active_fn=get_active_fn('cnn.ReLU'),
+                 active_fn=get_active_fn('nn.ReLU'),
                  batch_norm_kwargs={'momentum': 0.1, 'eps': 1e-5}):
 
         def _expand_ratio_to_hiddens(expand_ratio):

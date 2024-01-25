@@ -1,7 +1,8 @@
 import warnings
 
-import torch.nn.functional as F
 import numpy as np
+
+from models.secure_upsample import interpolate_nearest
 
 
 def resize(input,
@@ -23,7 +24,8 @@ def resize(input,
                         'the output would more aligned if '
                         f'input size {(input_h, input_w)} is `x+1` and '
                         f'out size {(output_h, output_w)} is `nx+1`')
-    return F.interpolate(input, size, scale_factor, mode, align_corners)
+    if mode != "nearest": raise ValueError(f"`{mode}` resizing is not supported in Crypten, sorry")
+    return interpolate_nearest(input, size, scale_factor)
 
 
 def intersect_and_union(pred_label, label, num_classes, ignore_index):

@@ -1,24 +1,23 @@
+import numbers
 import collections
 import logging
-from mmseg.utils import resize
-import numbers
 import torch
-from torch.nn import functional as F
-from utils import secure_distributed as udist
-
 import crypten
 import crypten.nn as cnn
 from models.secure_mobilenet_base import _make_divisible
 from models.secure_mobilenet_base import ConvBNReLU
 from models.secure_mobilenet_base import get_active_fn
-from models.secure_mobilenet_base import InvertedResidualChannels
-import models.secure_upsample as upsample
+from models.secure_mobilenet_base import InvertedResidualChannels, InvertedResidualChannelsFused
+from models.secure_upsample import UpsampleNearest
+from mmseg.secure_utils import resize
+from mmseg.utils import resize as resize_insecure
+import json
+from utils import distributed as udist
 
 __all__ = ['HighResolutionNet']
 
 checkpoint_kwparams = None
 # checkpoint_kwparams = json.load(open('checkpoint.json'))
-
 
 
 class InvertedResidual(InvertedResidualChannels):
@@ -85,7 +84,7 @@ class ParallelModule(cnn.Module):
                  expand_ratio=6,
                  kernel_sizes=[3, 5, 7],
                  batch_norm_kwargs=None,
-                 active_fn=get_active_fn('cnn.ReLU6')):
+                 active_fn=get_active_fn('nn.ReLU6')):
         super(ParallelModule, self).__init__()
 
         self.num_branches = num_branches
@@ -163,7 +162,7 @@ class FuseModule(cnn.Module):
                  expand_ratio=6,
                  kernel_sizes=[3, 5, 7],
                  batch_norm_kwargs=None,
-                 active_fn=get_active_fn('cnn.ReLU6'),
+                 active_fn=get_active_fn('nn.ReLU6'),
                  use_hr_format=False,
                  only_fuse_neighbor=True,
                  directly_downsample=True):
@@ -208,7 +207,7 @@ class FuseModule(cnn.Module):
                             active_fn=self.active_fn if not use_hr_format else None,
                             kernel_size=1  # for hr format
                         ),
-                        upsample.UpsampleNearest(scale_factor=2 ** (j - i))))
+                        UpsampleNearest(scale_factor=2 ** (j - i))))
                 elif j == i:
                     if use_hr_format and in_channels[j] == out_channels[i]:
                         fuse_layer.append(None)
@@ -342,7 +341,13 @@ class FuseModule(cnn.Module):
                             flag = 0
                         else:
                             if self.fuse_layers[i][j]:
-                                y = y + resize(
+                                # TODO cryptenify
+                                # y = y + resize(
+                                #     self.fuse_layers[i][j](x[j]),
+                                #     size=y.shape[2:],
+                                #     mode='bilinear',
+                                #     align_corners=False)
+                                y = y + resize_insecure(
                                     self.fuse_layers[i][j](x[j]),
                                     size=y.shape[2:],
                                     mode='bilinear',
@@ -366,7 +371,7 @@ class HeadModule(cnn.Module):
                  expand_ratio=6,
                  kernel_sizes=[3, 5, 7],
                  batch_norm_kwargs=None,
-                 active_fn=get_active_fn('cnn.ReLU6'),
+                 active_fn=get_active_fn('nn.ReLU6'),
                  concat_head_for_cls=False):
         super(HeadModule, self).__init__()
 
@@ -428,7 +433,7 @@ class HeadModule(cnn.Module):
                               size=x_list[-1].shape[2:],
                               mode='bilinear',
                               align_corners=False) for x in x_list]
-            x = torch.cat(x_incre, dim=1)
+            x = crypten.cat(x_incre, dim=1)
         else:
             if self.incre_modules:
                 x = self.incre_modules[0](x_list[0])
@@ -445,10 +450,11 @@ class HeadModule(cnn.Module):
 
         # assert x.size()[2] == self.avg_pool_size
 
+        # TODO cryptenify?
         if torch._C._get_tracing_state():
             x = x.flatten(start_dim=2).mean(dim=2)
         else:
-            x = F.avg_pool2d(x, kernel_size=x.size()[2:]).view(x.size(0), -1)
+            x = cnn.AvgPool2d(kernel_size=x.size()[2:]).forward(x).view(x.size(0), -1)
         return x
 
 
@@ -464,7 +470,7 @@ class HighResolutionNet(cnn.Module):
                  bn_momentum=0.1,
                  bn_epsilon=1e-5,
                  dropout_ratio=0.2,
-                 active_fn='cnn.ReLU6',
+                 active_fn='nn.ReLU6',
                  block='InvertedResidualChannels',
                  width_mult=1.0,
                  round_nearest=8,
@@ -601,17 +607,18 @@ class HighResolutionNet(cnn.Module):
         if udist.is_master():
             logging.info('=> init weights from normal distribution')
         for m in self.modules():
-            if isinstance(m, cnn.Conv2d):
-                if not self.initial_for_heatmap:
-                    cnn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-                else:
-                    cnn.init.normal_(m.weight, std=0.001)
-                    for name, _ in m.named_parameters():
-                        if name in ['bias']:
-                            cnn.init.constant_(m.bias, 0)
-            elif isinstance(m, cnn.BatchNorm2d):
-                cnn.init.constant_(m.weight, 1)
-                cnn.init.constant_(m.bias, 0)
+            with crypten.no_grad():
+                if isinstance(m, cnn.Conv2d):
+                    if not self.initial_for_heatmap:
+                        cnn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                    else:
+                        cnn.init.normal_(m.weight, std=0.001)
+                        for name, _ in m.named_parameters():
+                            if name in ['bias']:
+                                cnn.init.constant_(m.bias, 0)
+                elif isinstance(m, cnn.BatchNorm2d):
+                    cnn.init.constant_(m.weight, 1)
+                    cnn.init.constant_(m.bias, 0)
 
     def get_named_block_list(self):
         """Get `{name: module}` dictionary for all inverted residual blocks."""

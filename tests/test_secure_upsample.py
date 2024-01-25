@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-# UPSAMPLE TEST.py
+# TEST SECURE UPSAMPLE.py
 #   by Lut99
 #
 # Created:
 #   16 Nov 2023, 15:59:52
 # Last edited:
-#   17 Nov 2023, 17:30:28
+#   05 Dec 2023, 11:56:22
 # Auto updated?
 #   Yes
 #
@@ -21,7 +21,7 @@ import torch
 import torch.nn as nn
 
 sys.path.append(".")
-from models.secure_hrnet import UpsampleNearest
+from models.secure_upsample import UpsampleNearest
 
 crypten.init()
 

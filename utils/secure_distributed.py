@@ -4,8 +4,8 @@ from collections import OrderedDict
 import os
 import functools
 
-import crypten
 import torch
+import crypten
 import crypten.nn as cnn
 import torch.distributed as dist
 from torch.nn.parallel.scatter_gather import scatter_kwargs
@@ -16,7 +16,7 @@ from torch._utils import _take_tensors
 from torch.distributed import get_rank
 from torch.distributed import get_world_size
 
-from utils.config import CPU_OVERRIDE
+from utils.config import DEVICE_MODE
 
 
 def _get_env(env_name):
@@ -26,22 +26,22 @@ def _get_env(env_name):
 
 
 def init_dist(backend='nccl', **kwargs):
+    # NOTE: Only call to `init_dist` (`common.py:288`, or thereabouts) already uses `gloo`
+    # # Set the backend appropriately
+    # if DEVICE_MODE == "cpu":
+    #     backend = "gloo"
+    # else:
+    #     backend = "nccl"
+
+    # Run the normal function*
     if dist.is_initialized():
         raise RuntimeError('Should not init distributed twice')
-
-    # Initialize crypten whee
-    crypten.init()
-
-    # NOTE: NOT DOING ANYMORE because Crypten already seems to initialize this!
-    # # Do some GPU stuff
-    # if not CPU_OVERRIDE:
-    #     rank = int(_get_env('RANK'))
-    #     local_rank = int(_get_env('LOCAL_RANK'))
-    #     assert rank % torch.cuda.device_count() == local_rank
-    #     torch.cuda.set_device(local_rank)
-    #     dist.init_process_group(backend=backend, **kwargs)
-    # else:
-    #     dist.init_process_group(backend="gloo", **kwargs)
+    rank = int(_get_env('RANK'))
+    local_rank = int(_get_env('LOCAL_RANK'))
+    if backend == "nccl":
+        assert rank % torch.cuda.device_count() == local_rank
+        torch.cuda.set_device(local_rank)
+    dist.init_process_group(backend=backend, **kwargs)
 
 
 def assert_initialized():
@@ -56,7 +56,7 @@ def get_local_rank():
 
 def get_local_size():
     assert_initialized()
-    return torch.cuda.device_count()
+    return 1 if DEVICE_MODE == "cpu" else torch.cuda.device_count()
 
 
 def is_master():
@@ -98,9 +98,10 @@ def dist_reduce_tensor(tensor, dst=0):
     if world_size < 2:
         return tensor
     with torch.no_grad():
-        dist.reduce(tensor, dst=dst)
-        if get_rank() == dst:
-            tensor.div_(world_size)
+        with crypten.no_grad():
+            dist.reduce(tensor, dst=dst)
+            if get_rank() == dst:
+                tensor.div_(world_size)
     return tensor
 
 
@@ -110,8 +111,9 @@ def dist_all_reduce_tensor(tensor):
     if world_size < 2:
         return tensor
     with torch.no_grad():
-        dist.all_reduce(tensor)
-        tensor.div_(world_size)
+        with crypten.no_grad():
+            dist.all_reduce(tensor)
+            tensor.div_(world_size)
     return tensor
 
 
@@ -205,7 +207,10 @@ class AllReduceDistributedDataParallel(cnn.Module):  # old way of DDP
         return scatter_kwargs(inputs, kwargs, device_ids, dim=self.dim)
 
     def forward(self, *inputs, **kwargs):
-        inputs, kwargs = self.scatter(inputs, kwargs,
-                                      [torch.cuda.current_device()])
-        res = self.module(*inputs[0], **kwargs[0])
+        if DEVICE_MODE == "gpu":
+            inputs, kwargs = self.scatter(inputs, kwargs,
+                                        [torch.cuda.current_device()])
+            res = self.module(*inputs[0], **kwargs[0])
+        else:
+            res = self.module(*inputs, **kwargs)
         return res

@@ -8,11 +8,12 @@ import functools
 import importlib
 import warnings
 import torch
-# from torch import nn
 import crypten
+from crypten import CrypTensor
 import crypten.nn as cnn
 from utils.rmsprop import RMSprop
-from utils.secure_adamw import AdamW
+from utils.adamw import AdamW
+from utils.adam import Adam
 
 
 def poly_learning_rate(optimizer, base_lr, curr_iter, max_iter, power=0.9, min_lr=1e-4, index_split=4, scale_lr=10.0):
@@ -57,7 +58,9 @@ class ExponentialMovingAverage(cnn.Module):
                 'The variables must be half, float, or double: {}'.format(name))
 
         if zero_init:
-            self._shadow[name] = crypten.zeros_like(val)
+            tensor = torch.zeros_like(val)
+            if isinstance(val, CrypTensor): tensor = crypten.cryptensor(tensor)
+            self._shadow[name] = tensor
         else:
             self._shadow[name] = val.detach().clone()
         self._info[name] = {
@@ -124,7 +127,8 @@ class ExponentialMovingAverage(cnn.Module):
         self._info = copy.deepcopy(state_dict['info'])
 
     def to(self, *args, **kwargs):
-        device, dtype, non_blocking = crypten._C._nn._parse_to(*args, **kwargs)
+        # TODO cryptenify?
+        device, dtype, non_blocking = torch._C._nn._parse_to(*args, **kwargs)
         for k in list(self._shadow.keys()):
             v = self._shadow[k]
             self._shadow[k] = v.to(device,
@@ -162,7 +166,8 @@ class ExponentialMovingAverage(cnn.Module):
         if var_new_name in self._info and self._info[var_new_name]['compress_masked']:
             raise RuntimeError('Compress {} twice'.format(var_new_name))
         ema_old = self._shadow.pop(var_old_name)
-        ema_new = crypten.zeros_like(var_new, device=ema_old.device)
+        # TODO cryptenify
+        ema_new = torch.zeros_like(var_new, device=ema_old.device)
         mask_hook(ema_new, ema_old, mask)
         self._info[var_new_name] = self._info.pop(var_old_name)
         self._info[var_new_name]['compress_masked'] = True
@@ -215,8 +220,9 @@ class CrossEntropyLabelSmooth(cnn.Module):
     def forward(self, inputs, targets):
         assert inputs.size(1) == self.num_classes
         log_probs = self.logsoftmax(inputs)
-        targets = crypten.zeros_like(log_probs).scatter_(1, targets.unsqueeze(1),
+        targets = torch.zeros_like(log_probs).scatter_(1, targets.unsqueeze(1),
                                                        1)
+        if isinstance(log_probs, CrypTensor): targets = crypten.cryptensor(targets)
         targets = (1 - self.label_smoothing
                    ) * targets + self.label_smoothing / self.num_classes
         loss = crypten.sum(-targets * log_probs, 1)
@@ -335,12 +341,13 @@ def get_optimizer(model, FLAGS):
     else:
         weight_decay = FLAGS.weight_decay
     if FLAGS.optimizer == 'sgd':
-        optimizer = crypten.optim.SGD(model.parameters(),
+        optimizer = torch.optim.SGD(model.parameters(),
                                     lr=FLAGS.lr,
                                     momentum=FLAGS.momentum,
                                     nesterov=FLAGS.nesterov,
                                     weight_decay=weight_decay)  # set weight decay only on convs and fcs manually.
     elif FLAGS.optimizer == 'rmsprop':
+        # print([tensor.grad_fn for tensor in model.parameters()])
         optimizer = RMSprop(model.parameters(),
                             lr=FLAGS.lr,
                             alpha=FLAGS.alpha,

@@ -5,7 +5,6 @@ from torch.optim.optimizer import Optimizer
 from utils.common import index_tensor_in
 from utils.common import check_tensor_in
 
-import crypten
 
 class AdamW(Optimizer):
     r"""Implements AdamW algorithm.
@@ -55,7 +54,7 @@ class AdamW(Optimizer):
         for group in self.param_groups:
             group.setdefault('amsgrad', False)
 
-    @crypten.no_grad()
+    @torch.no_grad()
     def step(self, closure=None):
         """Performs a single optimization step.
 
@@ -65,7 +64,7 @@ class AdamW(Optimizer):
         """
         loss = None
         if closure is not None:
-            with crypten.enable_grad():
+            with torch.enable_grad():
                 loss = closure()
 
         for group in self.param_groups:
@@ -88,12 +87,12 @@ class AdamW(Optimizer):
                 if len(state) == 0:
                     state['step'] = 0
                     # Exponential moving average of gradient values
-                    state['exp_avg'] = crypten.zeros_like(p, memory_format=crypten.preserve_format)
+                    state['exp_avg'] = torch.zeros_like(p, memory_format=torch.preserve_format)
                     # Exponential moving average of squared gradient values
-                    state['exp_avg_sq'] = crypten.zeros_like(p, memory_format=crypten.preserve_format)
+                    state['exp_avg_sq'] = torch.zeros_like(p, memory_format=torch.preserve_format)
                     if amsgrad:
                         # Maintains max of all exp. moving avg. of sq. grad. values
-                        state['max_exp_avg_sq'] = crypten.zeros_like(p, memory_format=crypten.preserve_format)
+                        state['max_exp_avg_sq'] = torch.zeros_like(p, memory_format=torch.preserve_format)
 
                 exp_avg, exp_avg_sq = state['exp_avg'], state['exp_avg_sq']
                 if amsgrad:
@@ -109,7 +108,7 @@ class AdamW(Optimizer):
                 exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1 - beta2)
                 if amsgrad:
                     # Maintains the maximum of all 2nd moment running avg. till now
-                    crypten.max(max_exp_avg_sq, exp_avg_sq, out=max_exp_avg_sq)
+                    torch.max(max_exp_avg_sq, exp_avg_sq, out=max_exp_avg_sq)
                     # Use the max. for normalizing running avg. of gradient
                     denom = (max_exp_avg_sq.sqrt() / math.sqrt(bias_correction2)).add_(group['eps'])
                 else:
@@ -142,7 +141,7 @@ class AdamW(Optimizer):
                         new_state = {'step': state['step']}
                         for key in ['exp_avg', 'exp_avg_sq', 'max_exp_avg_sq']:
                             if key in state:
-                                new_state[key] = crypten.zeros_like(
+                                new_state[key] = torch.zeros_like(
                                     var_new.data, device=var_old.device)
                                 mask_hook(new_state[key], state[key], mask)
                                 new_state[key].to(state[key].device)

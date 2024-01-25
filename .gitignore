@@ -1,4 +1,6 @@
-.ipynb_checkpoints
-*.ipynb
-*.pth
-*pycache__
+__pycache__
+output
+venv
+data/cityscapes
+data/fake
+data/imagenet_lmdb

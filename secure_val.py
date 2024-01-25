@@ -2,17 +2,24 @@
 import logging
 import time
 
+import crypten
+import crypten.nn as cnn
 import torch
 
-from utils.config import FLAGS, _ENV_EXPAND
+from utils.config import DEVICE_MODE, FLAGS, _ENV_EXPAND
 from utils.common import set_random_seed
 from utils.common import setup_logging
 from utils.common import get_device
 from utils.common import bn_calibration
+from utils.fix_hook import fix_crypten
 from utils import dataflow
 from utils import secure_distributed as udist
 
 import secure_common as mc
+
+
+# STOP THE PRESSES: Fix `cnn.Module`s not having some of the functions we expect (but would support)
+fix_crypten()
 
 
 def run_one_epoch(epoch,
@@ -28,6 +35,7 @@ def run_one_epoch(epoch,
     """Run one epoch."""
     assert phase in ['val', 'test', 'bn_calibration'
                     ], "phase not be in val/test/bn_calibration."
+
     model.eval()
     if phase == 'bn_calibration':
         model.apply(bn_calibration)
@@ -48,7 +56,8 @@ def run_one_epoch(epoch,
             if batch_idx >= max_iter:
                 break
 
-        target = target.cuda(non_blocking=True)
+        if DEVICE_MODE == "gpu":
+            target = target.cuda(non_blocking=True)
         mc.forward_loss(model, criterion, input, target, meters)
 
     results = mc.reduce_and_flush_meters(meters)
@@ -69,7 +78,8 @@ def val():
     # model
     model, model_wrapper = mc.get_model()
     ema = mc.setup_ema(model)
-    criterion = torch.nn.CrossEntropyLoss(reduction='none').cuda()
+    criterion = torch.nn.CrossEntropyLoss(reduction='none')
+    if DEVICE_MODE == "gpu": criterion = criterion.cuda()
     # distributed
 
     # check pretrained
@@ -115,30 +125,32 @@ def validate(epoch, calib_loader, val_loader, criterion, val_meters,
             logging.warning(
                 'Only GPU0 is used when calibration when use DataParallel')
         with torch.no_grad():
-            _ = run_one_epoch(epoch,
-                              calib_loader,
-                              model_eval_wrapper,
-                              criterion,
-                              None,
-                              None,
-                              None,
-                              val_meters,
-                              max_iter=FLAGS.bn_calibration_steps,
-                              phase='bn_calibration')
-        if FLAGS.use_distributed:
-            udist.allreduce_bn(model_eval_wrapper)
-
-    # val
-    with torch.no_grad():
-        results = run_one_epoch(epoch,
-                                val_loader,
+            with crypten.no_grad():
+                _ = run_one_epoch(epoch,
+                                calib_loader,
                                 model_eval_wrapper,
                                 criterion,
                                 None,
                                 None,
                                 None,
                                 val_meters,
-                                phase=phase)
+                                max_iter=FLAGS.bn_calibration_steps,
+                                phase='bn_calibration')
+        if FLAGS.use_distributed:
+            udist.allreduce_bn(model_eval_wrapper)
+
+    # val
+    with torch.no_grad():
+        with crypten.no_grad():
+            results = run_one_epoch(epoch,
+                                    val_loader,
+                                    model_eval_wrapper,
+                                    criterion,
+                                    None,
+                                    None,
+                                    None,
+                                    val_meters,
+                                    phase=phase)
     return results
 
 

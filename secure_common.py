@@ -5,17 +5,21 @@ import math
 import os
 
 import torch
+import torch.nn.functional as F
 import torch.distributed as dist
+import crypten
+import crypten.nn as cnn
 from torch.utils.tensorboard import SummaryWriter
 
 from utils import secure_distributed as udist
 from utils.secure_model_profiling import model_profiling
-from utils.config import CPU_OVERRIDE, FLAGS
+from utils.config import DEVICE_MODE, FLAGS
 from utils.meters import ScalarMeter
 from utils.meters import flush_scalar_meters
 from utils.common import get_params_by_name
 
-import torch.nn.functional as F
+import models.secure_mobilenet_base as mb
+# import torch.nn.functional as F
 
 summary_writer = None
 
@@ -41,7 +45,7 @@ class SummaryWriterManager(object):
 
 def setup_ema(model):
     """Setup EMA for model's weights."""
-    from utils import secure_optim as optim
+    from utils import optim
 
     ema = None
     if FLAGS.moving_average_decay > 0.0:
@@ -76,9 +80,10 @@ def forward_loss(model, criterion, input, target, meter, task='classification', 
             block.index = 0
     if task == 'segmentation':
         if distill and kl:
-            input_log_softmax = F.log_softmax(output, dim=1)
-            target_softmax = F.softmax(output_whole.detach(), dim=1)
+            input_log_softmax = cnn.LogSoftmax(dim=1).forward(output)
+            target_softmax = cnn.Softmax(dim=1).forward(output_whole.detach())
             loss, acc = criterion(output, target)
+            # TODO cryptenify
             loss = loss + F.kl_div(input_log_softmax, target_softmax, reduction='mean')
         else:
             loss, acc = criterion(output, target)
@@ -91,8 +96,9 @@ def forward_loss(model, criterion, input, target, meter, task='classification', 
             loss = loss + loss_whole
     else:
         if distill and kl:
-            input_log_softmax = F.log_softmax(output, dim=1)
-            target_softmax = F.softmax(output_whole.detach(), dim=1)
+            input_log_softmax = cnn.LogSoftmax(dim=1).forward(output)
+            target_softmax = cnn.Softmax(dim=1).forward(output_whole.detach())
+            # TODO cryptenify
             loss = criterion(output, target) + F.kl_div(input_log_softmax, target_softmax, reduction='mean')  # size_average=False)
         else:
             loss = criterion(output, target)
@@ -120,8 +126,12 @@ def forward_loss(model, criterion, input, target, meter, task='classification', 
     return loss
 
 
-def reduce_and_flush_meters(meters, method='avg'):
-    """Sync and flush meters."""
+def reduce_and_flush_meters(meters, method='avg', encrypt=False):
+    """
+    Sync and flush meters.
+
+    If `encrypt` is given, then tensors are initializes as CrypTensors, meaning they are encrypted.
+    """
     if not FLAGS.use_distributed:
         results = flush_scalar_meters(meters)
     else:
@@ -133,22 +143,28 @@ def reduce_and_flush_meters(meters, method='avg'):
             if not isinstance(meter, ScalarMeter):
                 continue
             if method == 'avg':
-                method_fun = torch.mean
+                method_fun = "avg"
             elif method == 'sum':
-                method_fun = torch.sum
+                method_fun = "sum"
             elif method == 'max':
-                method_fun = torch.max
+                method_fun = "max"
             elif method == 'min':
-                method_fun = torch.min
+                method_fun = "min"
             else:
                 raise NotImplementedError(
                     'flush method: {} is not yet implemented.'.format(method))
-            tensor = torch.tensor(meter.values).cuda()
+            tensor = torch.tensor(meter.values)
+            if encrypt:
+                tensor = crypten.cryptensor(tensor)
+            if DEVICE_MODE == "gpu":
+                tensor = tensor.cuda()
             gather_tensors = [
+                # TODO cryptenify
                 torch.ones_like(tensor) for _ in range(udist.get_world_size())
             ]
+            # TODO cryptenify?
             dist.all_gather(gather_tensors, tensor)
-            value = method_fun(torch.cat(gather_tensors))
+            value = getattr(crypten.cat(gather_tensors), method_fun)()
             meter.flush(value)
             results[name] = value
     return results
@@ -221,16 +237,24 @@ def get_model():
             raise ValueError('Unknown init method: {}'.format(init_method))
         if udist.is_master():
             logging.info('Init model by: {}'.format(init_method))
-    if FLAGS.use_distributed:
-        if not CPU_OVERRIDE:
-            model_wrapper = udist.AllReduceDistributedDataParallel(model.cuda())
-        else:
+    if DEVICE_MODE == "cpu":
+        if FLAGS.use_distributed:
             model_wrapper = udist.AllReduceDistributedDataParallel(model)
-    else:
-        if not CPU_OVERRIDE:
-            model_wrapper = torch.nn.DataParallel(model).cuda()
         else:
-            model_wrapper = torch.nn.DataParallel(model)
+            # model_wrapper = torch.nn.DataParallel(model)
+            raise ValueError("Non-distributed execution is not supported in Crypten, sorry")
+    else:
+        if FLAGS.use_distributed:
+            if DEVICE_MODE == "cpu":
+                model_wrapper = udist.AllReduceDistributedDataParallel(model)
+            else:
+                model_wrapper = udist.AllReduceDistributedDataParallel(model.cuda())
+        else:
+            # if DEVICE_MODE == "cpu":
+            #     model_wrapper = torch.nn.DataParallel(model)
+            # else:
+            #     model_wrapper = torch.nn.DataParallel(model).cuda()
+            raise ValueError("Non-distributed execution is not supported in Crypten, sorry")
     return model, model_wrapper
 
 
@@ -267,26 +291,30 @@ def profiling(model, use_cuda):
                     FLAGS.image_size,
                     FLAGS.image_size,
                     verbose=getattr(FLAGS, 'model_profiling_verbose', True)
-                    and udist.is_master())
+                    and udist.is_master(),
+                    use_cuda=DEVICE_MODE == "gpu")
 
 
 def setup_distributed(num_images=None):
     """Setup distributed related parameters."""
     # init distributed
     if FLAGS.use_distributed:
-        udist.init_dist()
+        udist.init_dist(backend="gloo")
         FLAGS.batch_size = udist.get_world_size() * FLAGS.per_gpu_batch_size
         FLAGS._loader_batch_size = FLAGS.per_gpu_batch_size
         if FLAGS.bn_calibration:
             FLAGS._loader_batch_size_calib = \
                 FLAGS.bn_calibration_per_gpu_batch_size
-        if not CPU_OVERRIDE:
+
+        # Scale the data_loader_workers, whatever that is, but only if we worry about GPUs
+        if DEVICE_MODE == "gpu":
             FLAGS.data_loader_workers = round(FLAGS.data_loader_workers
                                             / udist.get_local_size())  # Per_gpu_workers(the function will return the nearest integer
-        else:
-            FLAGS.data_loader_workers = round(FLAGS.data_loader_workers)
     else:
-        count = torch.cuda.device_count()
+        if DEVICE_MODE == "cpu":
+            count = torch.cuda.device_count()
+        else:
+            count = 1
         FLAGS.batch_size = count * FLAGS.per_gpu_batch_size
         FLAGS._loader_batch_size = FLAGS.batch_size
         if FLAGS.bn_calibration:
@@ -299,5 +327,3 @@ def setup_distributed(num_images=None):
         # rate will be negative
         # the smallest integer not less than x
         FLAGS._steps_per_epoch = math.ceil(num_images / FLAGS.batch_size)
-
-

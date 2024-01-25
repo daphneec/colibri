@@ -3,16 +3,20 @@
 
 import functools
 import math
-from typing import Optional
+from typing import Optional, Union
 
 import numpy as np
 import torch
-from torch import nn, Tensor
-from torch.nn import functional as F
+from torch import Tensor
+import crypten
+from crypten import nn as cnn, CrypTensor
 
-import crypten.nn as cnn
+from models.secure_multi_head_attention import MultiHeadAttention
+from models.secure_layernorm import LayerNorm
+from models.secure_upsample import interpolate_nearest
 
-class secure_MHAttentionMap(cnn.Module):
+
+class MHAttentionMap(cnn.Module):
     """This is a 2D attention module, which only returns the attention softmax (no multiplication by value)"""
 
     def __init__(self, query_dim, hidden_dim, num_heads=1, dropout=0.0, bias=True): # 100, 256, 8
@@ -24,25 +28,27 @@ class secure_MHAttentionMap(cnn.Module):
         self.q_linear = cnn.Linear(query_dim, hidden_dim, bias=bias)
         self.k_linear = cnn.Linear(query_dim, hidden_dim, bias=bias)
 
-        cnn.init.zeros_(self.k_linear.bias)
-        cnn.init.zeros_(self.q_linear.bias)
-        cnn.init.xavier_uniform_(self.k_linear.weight)
-        cnn.init.xavier_uniform_(self.q_linear.weight)
+        with crypten.no_grad():
+            cnn.init.zeros_(self.k_linear.bias)
+            cnn.init.zeros_(self.q_linear.bias)
+            cnn.init.xavier_uniform_(self.k_linear.weight)
+            cnn.init.xavier_uniform_(self.q_linear.weight)
         self.normalize_fact = float(hidden_dim / self.num_heads) ** -0.5
 
     def forward(self, q, k):
         q = self.q_linear(q)
-        k = cnn.Conv2d(k, self.k_linear.weight.unsqueeze(-1).unsqueeze(-1), self.k_linear.bias)
+        k = cnn.Conv2d(self.k_linear.weight.unsqueeze(-1).unsqueeze(-1), self.k_linear.bias).forward(k)
         qh = q.view(q.shape[0], q.shape[1], self.num_heads, self.hidden_dim // self.num_heads)
         kh = k.view(k.shape[0], self.num_heads, self.hidden_dim // self.num_heads, k.shape[-2], k.shape[-1])
+        # TODO cryptenify
         weights = torch.einsum("bqnc,bnchw->bqnhw", qh * self.normalize_fact, kh)
 
-        weights = cnn.Softmax(weights.flatten(2), dim=-1).view_as(weights)
+        weights = cnn.Softmax(dim=-1).forward(weights.flatten(2)).view_as(weights)
         weights = self.dropout(weights)
         return weights
 
 
-class secure_PositionEmbeddingSine(cnn.Module):
+class PositionEmbeddingSine(cnn.Module):
     """
     This is a more standard version of the position embedding, very similar to the one
     used by the Attention is all you need paper, generalized to work on images.
@@ -61,6 +67,8 @@ class secure_PositionEmbeddingSine(cnn.Module):
 
     def forward(self, x):
         mask = torch.zeros((x.shape[0],) + x.shape[2:]).byte()
+        if isinstance(x, CrypTensor):
+            mask = crypten.cryptensor(mask)
         assert mask is not None
         not_mask = ~mask
         y_embed = not_mask.cumsum(1, dtype=torch.float32)
@@ -71,19 +79,21 @@ class secure_PositionEmbeddingSine(cnn.Module):
             x_embed = x_embed / (x_embed[:, :, -1:] + eps) * self.scale
 
         dim_t = torch.arange(self.num_pos_feats, dtype=torch.float32, device=x.device)
+        if isinstance(x, CrypTensor):
+            dim_t = crypten.cryptensor(dim_t)
         dim_t = self.temperature ** (2 * (dim_t // 2) / self.num_pos_feats)
 
         pos_x = x_embed[:, :, :, None].to(device=x.device) / dim_t
         pos_y = y_embed[:, :, :, None].to(device=x.device) / dim_t
-        pos_x = torch.stack((pos_x[:, :, :, 0::2].sin(),
+        pos_x = crypten.stack((pos_x[:, :, :, 0::2].sin(),
                              pos_x[:, :, :, 1::2].cos()), dim=4).flatten(3)
-        pos_y = torch.stack((pos_y[:, :, :, 0::2].sin(),
+        pos_y = crypten.stack((pos_y[:, :, :, 0::2].sin(),
                              pos_y[:, :, :, 1::2].cos()), dim=4).flatten(3)
-        pos = torch.cat((pos_y, pos_x), dim=3).permute(0, 3, 1, 2)
+        pos = crypten.cat((pos_y, pos_x), dim=3).permute(0, 3, 1, 2)
         return pos
 
 
-class secure_Transformer(cnn.Module):
+class Transformer(cnn.Module):
     """ A transformer module used for computer vision tasks.
     First project the feature map into tokens as the input of the transformer.
 
@@ -138,7 +148,8 @@ class secure_Transformer(cnn.Module):
         # Transformer Encoder
         self.encoder = TransformerEncoderLayer(self.dim_tokens, nhead=self.num_heads)
         if use_decoder:
-            self.query_embed = cnn.Linear(num_queries, self.dim_tokens)
+            # TODO cryptenify
+            self.query_embed = cnn.Embedding(num_queries, self.dim_tokens)
             self.decoder = TransformerDecoderLayer(self.dim_tokens, nhead=self.num_heads)
             if positional_decoder and position_encoding == 'points':
                 self.num_tokens += 2
@@ -154,11 +165,12 @@ class secure_Transformer(cnn.Module):
         self._reset_parameters()
 
     def _reset_parameters(self):
-        for p in self.parameters():
-            if p.dim() > 1:
-                nn.init.xavier_uniform_(p)
+        with crypten.no_grad():
+            for p in self.parameters():
+                if p.dim() > 1:
+                    cnn.init.xavier_uniform_(p)
 
-    def forward(self, input: Tensor):
+    def forward(self, input: Union[CrypTensor, Tensor]):
         batch_size, _, height, width = input.shape
         feature = input
         if self.down_sample is not None:
@@ -170,7 +182,9 @@ class secure_Transformer(cnn.Module):
         if self.position_encoding == 'points':
             position_embedding = torch.from_numpy(get_points_single(feature.shape[-2:])) \
                 .unsqueeze(0).repeat(batch_size, 1, 1, 1).to(feature.device)
-            feature = torch.cat([feature, position_embedding], dim=1)
+            if isinstance(input, CrypTensor):
+                position_embedding = crypten.cryptensor(position_embedding)
+            feature = crypten.cat([feature, position_embedding], dim=1)
 
         feature = self.input_proj(feature)
         feature = self.input_norm(feature)
@@ -213,7 +227,7 @@ class secure_Transformer(cnn.Module):
 
 
 
-class secure_TransformerEncoderLayer(cnn.Module):
+class TransformerEncoderLayer(cnn.Module):
 
     def __init__(self, d_model, dim_feedforward=None, nhead=1, dropout=0.1,
                  activation="relu", normalize_before=False):
@@ -222,15 +236,16 @@ class secure_TransformerEncoderLayer(cnn.Module):
         if dim_feedforward is None:
             dim_feedforward = d_model
 
-        self.self_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout, bias=False)
+        # self.self_attn = MultiHeadAttention(d_model, nhead, dropout=dropout, bias=False)
+        self.self_attn = MultiHeadAttention(d_model, nhead, dropout=dropout)
 
         # Implementation of Feedforward model
         self.linear1 = cnn.Linear(d_model, dim_feedforward, bias=False)
         self.dropout = cnn.Dropout(dropout)
         self.linear2 = cnn.Linear(dim_feedforward, d_model, bias=False)
 
-        self.norm1 = cnn.LayerNorm(d_model)
-        self.norm2 = cnn.LayerNorm(d_model)
+        self.norm1 = LayerNorm(d_model)
+        self.norm2 = LayerNorm(d_model)
         self.dropout1 = cnn.Dropout(dropout)
         self.dropout2 = cnn.Dropout(dropout)
 
@@ -238,8 +253,8 @@ class secure_TransformerEncoderLayer(cnn.Module):
         self.normalize_before = normalize_before
 
     def forward_post(self, src,
-                     src_mask: Optional[Tensor] = None,
-                     src_key_padding_mask: Optional[Tensor] = None):
+                     src_mask: Optional[Union[CrypTensor, Tensor]] = None,
+                     src_key_padding_mask: Optional[Union[CrypTensor, Tensor]] = None):
         q = k = src
         src2 = self.self_attn(q, k, value=src, attn_mask=src_mask,
                               key_padding_mask=src_key_padding_mask)[0]
@@ -251,8 +266,8 @@ class secure_TransformerEncoderLayer(cnn.Module):
         return src
 
     def forward_pre(self, src,
-                    src_mask: Optional[Tensor] = None,
-                    src_key_padding_mask: Optional[Tensor] = None):
+                    src_mask: Optional[Union[CrypTensor, Tensor]] = None,
+                    src_key_padding_mask: Optional[Union[CrypTensor, Tensor]] = None):
         src2 = self.norm1(src)
         q = k = src2
         src2 = self.self_attn(q, k, value=src2, attn_mask=src_mask,
@@ -264,14 +279,14 @@ class secure_TransformerEncoderLayer(cnn.Module):
         return src
 
     def forward(self, src,
-                src_mask: Optional[Tensor] = None,
-                src_key_padding_mask: Optional[Tensor] = None):
+                src_mask: Optional[Union[CrypTensor, Tensor]] = None,
+                src_key_padding_mask: Optional[Union[CrypTensor, Tensor]] = None):
         if self.normalize_before:
             return self.forward_pre(src, src_mask, src_key_padding_mask)
         return self.forward_post(src, src_mask, src_key_padding_mask)
 
 
-class secure_TransformerDecoderLayer(cnn.Module):
+class TransformerDecoderLayer(cnn.Module):
 
     def __init__(self, d_model, dim_feedforward=None, nhead=1, dropout=0.1,
                  activation="relu"):
@@ -280,15 +295,15 @@ class secure_TransformerDecoderLayer(cnn.Module):
         if dim_feedforward is None:
             dim_feedforward = d_model
 
-        self.multihead_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout, bias=False)
+        self.multihead_attn = cnn.MultiheadAttention(d_model, nhead, dropout=dropout, bias=False)
 
         # Implementation of Feedforward model
         self.linear1 = cnn.Linear(d_model, dim_feedforward, bias=False)
         self.dropout = cnn.Dropout(dropout)
         self.linear2 = cnn.Linear(dim_feedforward, d_model, bias=False)
 
-        self.norm1 = nn.LayerNorm(d_model)
-        self.norm2 = nn.LayerNorm(d_model)
+        self.norm1 = LayerNorm(d_model)
+        self.norm2 = LayerNorm(d_model)
         self.dropout1 = cnn.Dropout(dropout)
         self.dropout2 = cnn.Dropout(dropout)
 
@@ -296,8 +311,8 @@ class secure_TransformerDecoderLayer(cnn.Module):
 
     def forward(self, query, memory, position_embedding=None):
         if position_embedding is not None:
-            query = torch.cat([query, position_embedding.flatten(2).permute(1, 0, 2)], dim=0)
-            memory = torch.cat([memory, position_embedding.flatten(2).permute(1, 0, 2)], dim=0)
+            query = crypten.cat([query, position_embedding.flatten(2).permute(1, 0, 2)], dim=0)
+            memory = crypten.cat([memory, position_embedding.flatten(2).permute(1, 0, 2)], dim=0)
 
         tgt = self.multihead_attn(query=query,
                                   key=memory,
@@ -327,11 +342,9 @@ def _get_activation_fn(activation):
     if activation == "relu":
         return cnn.ReLU
     if activation == "gelu":
-        #return F.gelu
-        raise RuntimeError(F"please don't use gelu as secure activation from model/transformer.")
+        raise ValueError("`gelu` activation function not supported in Crypten, sorry")
     if activation == "glu":
-        #return F.glu
-        raise RuntimeError(F"please don't use glu as secure activation from model/transformer.")
+        raise ValueError("`glu` activation function not supported in Crypten, sorry")
     raise RuntimeError(F"activation should be relu/gelu, not {activation}.")
 
 
@@ -340,4 +353,6 @@ def resize(input,
            scale_factor=None,
            mode='nearest',
            align_corners=None):
-    return F.interpolate(input, size, scale_factor, mode, align_corners)
+    if mode != "nearest": raise ValueError(f"`{mode}` interpolation is not supported in Crypten, sorry")
+    if align_corners is None: print("WARNING: models.secure_transformer.resize(): 'align_corners' is given to no effect")
+    return interpolate_nearest(input, size, scale_factor)
