@@ -4,7 +4,7 @@
 # Created:
 #   09 Nov 2023, 10:41:00
 # Last edited:
-#   22 Jan 2024, 16:22:07
+#   25 Jan 2024, 14:02:10
 # Auto updated?
 #   Yes
 #
@@ -253,6 +253,7 @@ def fix_deps():
     fix_crypten()
     fix_crypten_module()
     fix_crypten_conv2d()
+    fix_crypten_sequential()
 
     # Also fix torch lel
     fix_torch_tensor()
@@ -334,7 +335,7 @@ def fix_crypten_module():
 
 def fix_crypten_conv2d():
     """
-        Fixes `in_channels` not existing in the given Crypten module.
+        Fixes `in_channels` not existing in the Cond2d module.
 
         Specifically, injects:
         - A wrapper around `cnn.Conv2d.__init__()` to make it store its input channels under `in_channels`.
@@ -351,6 +352,26 @@ def fix_crypten_conv2d():
         cnn.Conv2d.__init__ = _conv_init(cnn.Conv2d.__init__)
     else:
         if DEBUG: print("DEBUG: utils.fix_hook.fix_crypten_conv2d(): Not fixing `__init__` for given module as it is already overwritten")
+
+def fix_crypten_sequential():
+    """
+        Fixes `__iter__` not existing in the Sequential module.
+
+        Specifically, injects:
+        - A wrapper around `cnn.Sequential.__iter__()` as a shorthand for `cnn.Sequential.modules()`.
+
+        Use it like so:
+        ```python
+        fix_conv(cnn.Conv2d)
+    """
+
+    # Implement iteration as a shorthand for the module
+    if DEBUG: print("DEBUG: utils.fix_hook.fix_crypten_module(): Injecting 'crypten.nn.Sequential.__iter__()'")
+    try:
+        getattr(cnn.Sequential, '__iter__')
+        if DEBUG: print("DEBUG: utils.fix_hook.fix_crypten_module(): Not fixing `__iter__` because it already exists")
+    except AttributeError:
+        cnn.Sequential.__iter__ = cnn.Sequential.modules
 
 def fix_torch_tensor():
     """
