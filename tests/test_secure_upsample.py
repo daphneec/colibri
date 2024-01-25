@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-# UPSAMPLE TEST.py
+# TEST SECURE UPSAMPLE.py
 #   by Lut99
 #
 # Created:
 #   16 Nov 2023, 15:59:52
 # Last edited:
-#   23 Nov 2023, 13:55:16
+#   05 Dec 2023, 11:56:22
 # Auto updated?
 #   Yes
 #

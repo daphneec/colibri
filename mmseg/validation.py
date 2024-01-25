@@ -11,6 +11,7 @@ import torch
 import torch.distributed as dist
 from utils import distributed as udist
 from utils.coco_dataset import flip_back
+from utils.config import DEVICE_MODE
 from mmseg.loss import accuracy, get_final_preds
 
 def collect_results_cpu(result_part, size, tmpdir=None):
@@ -23,11 +24,11 @@ def collect_results_cpu(result_part, size, tmpdir=None):
         dir_tensor = torch.full((MAX_LEN, ),
                                 32,
                                 dtype=torch.uint8,
-                                device='cuda')
+                                device='cpu' if DEVICE_MODE == "cpu" else 'cuda')
         if rank == 0:
             tmpdir = tempfile.mkdtemp()
             tmpdir = torch.tensor(
-                bytearray(tmpdir.encode()), dtype=torch.uint8, device='cuda')
+                bytearray(tmpdir.encode()), dtype=torch.uint8, device='cpu' if DEVICE_MODE == "cpu" else 'cuda')
             dir_tensor[:len(tmpdir)] = tmpdir
         dist.broadcast(dir_tensor, 0)
         tmpdir = dir_tensor.cpu().numpy().tobytes().decode().rstrip()
@@ -95,7 +96,7 @@ class SegVal:
 
             if len(imgs) == 1:
                 result = self.simple_test(model,
-                                          imgs[0].cuda() if FLAGS.single_gpu_test else imgs[0],
+                                          imgs[0].cuda() if DEVICE_MODE == "gpu" and FLAGS.single_gpu_test else imgs[0],
                                           img_metas[0])
             else:
                 result = self.aug_test(model, imgs, img_metas)
@@ -244,7 +245,8 @@ class SegVal:
 
 
 def keypoint_val(val_dataset, val_loader, model, criterion):
-    model = torch.nn.DataParallel(model).cuda()
+    model = torch.nn.DataParallel(model)
+    if DEVICE_MODE == "gpu": model = model.cuda()
     model.eval()
     num_samples = len(val_dataset)
     all_preds = np.zeros(
@@ -258,7 +260,8 @@ def keypoint_val(val_dataset, val_loader, model, criterion):
     idx = 0
     with torch.no_grad():
         for i, (input, target, target_weight, meta) in enumerate(val_loader):
-            input = input.cuda(non_blocking=True)
+            if DEVICE_MODE == "gpu":
+                input = input.cuda(non_blocking=True)
 
             # compute output
             outputs = model(input)
@@ -280,7 +283,8 @@ def keypoint_val(val_dataset, val_loader, model, criterion):
 
                 output_flipped = flip_back(output_flipped.cpu().numpy(),
                                            val_dataset.flip_pairs)
-                output_flipped = torch.from_numpy(output_flipped.copy()).cuda()
+                output_flipped = torch.from_numpy(output_flipped.copy())
+                if DEVICE_MODE == "gpu": output_flipped = output_flipped.cuda()
 
                 # feature is not aligned, shift flipped heatmap for higher accuracy
                 if SHIFT_HEATMAP:

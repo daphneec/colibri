@@ -31,7 +31,7 @@ moving_average_decay_adjust: True
 moving_average_decay_base_batch: 4096
 
 # model profiling
-profiling: [gpu]  # on GPU only
+profiling: [cpu]  # on GPU only
 
 
 # pretrain, resume, test_only
@@ -44,9 +44,9 @@ random_seed: 1995
 reset_parameters: True
 reset_param_method: ~
 
-model: models.secure_hrnet
+model: models.hrnet
 model_kwparams: {
-  active_fn: 'cnn.ReLU',
+  active_fn: 'nn.ReLU',
   num_classes: 17,
   width_mult: 1.0,
   round_nearest: 2,

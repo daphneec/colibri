@@ -4,20 +4,17 @@ import functools
 import numpy as np
 import time
 import torch
-import torch.nn as nn
-#import models.mobilenet_base as mb
-#import models.hrnet as hr
-#import models.hrnet_base as hrb
-#import models.transformer as transformer
-from utils import distributed as udist
-from utils.config import CPU_OVERRIDE
-
 import crypten
 import crypten.nn as cnn
-import models.secure_transformer as secure_transformer
-import models.secure_mobilenet_base as smb
-import models.secure_hrnet as shr
-import models.secure_hrnet_base as shrb
+import models.secure_mobilenet_base as mb
+import models.secure_hrnet as hr
+import models.secure_hrnet_base as hrb
+from models.secure_padding import ZeroPad2d
+from models.secure_multi_head_attention import MultiHeadAttention
+from models.secure_layernorm import LayerNorm
+import models.secure_transformer as transformer
+from utils import distributed as udist
+from utils.config import DEVICE_MODE
 
 model_profiling_hooks = []
 model_profiling_speed_hooks = []
@@ -57,7 +54,7 @@ def run_forward(self, input, num_forwards=10):
     with Timer() as t:
         for _ in range(num_forwards):
             self.forward(*input)
-            torch.cuda.synchronize()
+            if DEVICE_MODE == "gpu": torch.cuda.synchronize()
     return int(t.time * 1e9 / num_forwards)
 
 
@@ -81,12 +78,13 @@ def module_profiling(self, input, output, num_forwards, verbose):
         m.n_params += getattr(sub_op, 'n_params', 0)
         m.n_seconds += getattr(sub_op, 'n_seconds', 0)
 
-    _run_forward = functools.partial(run_forward, num_forwards=num_forwards)
+    # _run_forward = functools.partial(run_forward, num_forwards=num_forwards)
     # if isinstance(self, (hr.ParallelModule, hr.FuseModule, hr.HeadModule)) \
     #     or (isinstance(self, nn.Sequential) and isinstance(self[0], hr.ParallelModule)):
     if not input:
         return
-    if isinstance(self, nn.MultiheadAttention) or isinstance(input[0], list) or isinstance(output, list):
+    # TODO cryptenify
+    if isinstance(self, MultiHeadAttention) or isinstance(input[0], list) or isinstance(output, list):
         pass
     else:
         ins = input[0].size()
@@ -101,40 +99,41 @@ def module_profiling(self, input, output, num_forwards, verbose):
                        self.kernel_size[1] * outs[2] * outs[3] //
                        self.groups) * outs[0]
         self.n_params = get_params(self)
-        self.n_seconds = _run_forward(self, input)
+        self.n_seconds = 1
         self.name = conv_module_name_filter(self.__repr__())
-    elif isinstance(self, nn.ConvTranspose2d):
-        self.n_macs = (ins[1] * outs[1] * self.kernel_size[0] *
-                       self.kernel_size[1] * outs[2] * outs[3] //
-                       self.groups) * outs[0]
-        self.n_params = get_params(self)
-        self.n_seconds = _run_forward(self, input)
-        self.name = conv_module_name_filter(self.__repr__())
+    # TODO cryptenify
+    # elif isinstance(self, nn.ConvTranspose2d):
+    #     self.n_macs = (ins[1] * outs[1] * self.kernel_size[0] *
+    #                    self.kernel_size[1] * outs[2] * outs[3] //
+    #                    self.groups) * outs[0]
+    #     self.n_params = get_params(self)
+    #     self.n_seconds = 1
+    #     self.name = conv_module_name_filter(self.__repr__())
     elif isinstance(self, cnn.Linear):
         self.n_macs = ins[1] * outs[1] * outs[0]
         self.n_params = get_params(self)
-        self.n_seconds = _run_forward(self, input)
+        self.n_seconds = 1
         self.name = self.__repr__()
     elif isinstance(self, cnn.AvgPool2d):
         # NOTE: this function is correct only when stride == kernel size
         self.n_macs = ins[1] * ins[2] * ins[3] * ins[0]
         self.n_params = 0
-        self.n_seconds = _run_forward(self, input)
+        self.n_seconds = 1
         self.name = self.__repr__()
     elif isinstance(self, cnn.AdaptiveAvgPool2d):
         # NOTE: this function is correct only when stride == kernel size
         self.n_macs = ins[1] * ins[2] * ins[3] * ins[0]
         self.n_params = 0
-        self.n_seconds = _run_forward(self, input)
+        self.n_seconds = 1
         self.name = self.__repr__()
-    elif isinstance(self, smb.SqueezeAndExcitation):
+    elif isinstance(self, mb.SqueezeAndExcitation):
         self.n_macs = ins[1] * ins[2] * ins[3] * ins[0]
         self.n_params = 0
         self.n_seconds = 0
         add_sub(self, self.se_reduce)
         add_sub(self, self.se_expand)
         self.name = self.__repr__()
-    elif isinstance(self, smb.InvertedResidualChannels):
+    elif isinstance(self, mb.InvertedResidualChannels):
         self.n_macs = 0
         self.n_params = 0
         self.n_seconds = 0
@@ -148,7 +147,7 @@ def module_profiling(self, input, output, num_forwards, verbose):
         if self.use_transformer and self.downsampling_transformer and not self.use_res_connect:
             add_sub(self, self.transformer)
         self.name = self.__repr__()
-    elif isinstance(self, smb.InvertedResidualChannelsFused):
+    elif isinstance(self, mb.InvertedResidualChannelsFused):
         self.n_macs = 0
         self.n_params = 0
         self.n_seconds = 0
@@ -158,14 +157,14 @@ def module_profiling(self, input, output, num_forwards, verbose):
         add_sub(self, self.project_conv)
         add_sub(self, self.se_op)
         self.name = self.__repr__()
-    elif isinstance(self, shr.ParallelModule):
+    elif isinstance(self, hr.ParallelModule):
         self.n_macs = 0
         self.n_params = 0
         self.n_seconds = 0
         for op in self.branches:
             add_sub(self, op)
         self.name = self.__repr__()
-    elif isinstance(self, shr.FuseModule):
+    elif isinstance(self, hr.FuseModule):
         self.n_macs = 0
         self.n_params = 0
         self.n_seconds = 0
@@ -173,7 +172,7 @@ def module_profiling(self, input, output, num_forwards, verbose):
             for op in ops:
                 add_sub(self, op)
         self.name = self.__repr__()
-    elif isinstance(self, shr.HeadModule):
+    elif isinstance(self, hr.HeadModule):
         self.n_macs = 0
         self.n_params = 0
         self.n_seconds = 0
@@ -183,7 +182,7 @@ def module_profiling(self, input, output, num_forwards, verbose):
             add_sub(self, op)
         add_sub(self, self.final_layer)
         self.name = self.__repr__()
-    elif isinstance(self, secure_transformer.secure_Transformer):
+    elif isinstance(self, transformer.Transformer):
         self.n_macs = 0
         self.n_params = 0
         self.n_seconds = 0
@@ -192,7 +191,7 @@ def module_profiling(self, input, output, num_forwards, verbose):
         add_sub(self, self.encoder)
         add_sub(self, self.decoder)
         self.name = self.__repr__()
-    elif isinstance(self, secure_transformer.secure_TransformerEncoderLayer):
+    elif isinstance(self, transformer.TransformerEncoderLayer):
         self.n_macs = 0
         self.n_params = 0
         self.n_seconds = 0
@@ -200,7 +199,7 @@ def module_profiling(self, input, output, num_forwards, verbose):
         add_sub(self, self.linear1)
         add_sub(self, self.linear2)
         self.name = self.__repr__()
-    elif isinstance(self, secure_transformer.secure_TransformerDecoderLayer):
+    elif isinstance(self, transformer.TransformerDecoderLayer):
         self.n_macs = 0
         self.n_params = 0
         self.n_seconds = 0
@@ -208,7 +207,8 @@ def module_profiling(self, input, output, num_forwards, verbose):
         add_sub(self, self.linear1)
         add_sub(self, self.linear2)
         self.name = self.__repr__()
-    elif isinstance(self, nn.MultiheadAttention):
+    # TODO cryptenify
+    elif isinstance(self, MultiHeadAttention):
         self.n_macs = 0
         self.n_params = 0
         self.n_seconds = 0
@@ -216,7 +216,7 @@ def module_profiling(self, input, output, num_forwards, verbose):
         self.n_macs += 2 * input[0].shape[0] * input[1].shape[0] * input[0].shape[2] + \
             4 * input[0].shape[0] * input[0].shape[2] * input[0].shape[2]
         self.name = self.__repr__()
-    elif isinstance(self, shrb.HighResolutionModule):
+    elif isinstance(self, hrb.HighResolutionModule):
         self.n_macs = 0
         self.n_params = 0
         self.n_seconds = 0
@@ -225,7 +225,7 @@ def module_profiling(self, input, output, num_forwards, verbose):
         for op in self.fuse_layers:
             add_sub(self, op)
         self.name = self.__repr__()
-    elif isinstance(self, shrb.BasicBlock):
+    elif isinstance(self, hrb.BasicBlock):
         self.n_macs = 0
         self.n_params = 0
         self.n_seconds = 0
@@ -233,7 +233,7 @@ def module_profiling(self, input, output, num_forwards, verbose):
         if self.downsample is not None:
             add_sub(self, self.downsample)
         self.name = self.__repr__()
-    elif isinstance(self, shrb.Bottleneck):
+    elif isinstance(self, hrb.Bottleneck):
         self.n_macs = 0
         self.n_params = 0
         self.n_seconds = 0
@@ -256,17 +256,20 @@ def module_profiling(self, input, output, num_forwards, verbose):
             num_children += 1
         ignore_zeros_t = [
             cnn.BatchNorm2d,
-            nn.LayerNorm,
+            # TODO cryptenify
+            LayerNorm,
             cnn.Dropout2d,
-            nn.Dropout,
-            nn.Sequential,
-            nn.ReLU6,
-            nn.ReLU,
-            smb.Swish,
-            smb.Narrow,
-            smb.Identity,
+            cnn.Dropout,
+            cnn.Sequential,
+            cnn.ReLU6,
+            cnn.ReLU,
+            mb.Swish,
+            mb.Narrow,
+            mb.Identity,
             cnn.MaxPool2d,
-            nn.modules.padding.ZeroPad2d,
+            # TODO cryptenify
+            ZeroPad2d,
+            # TODO cryptenify
             cnn.Sigmoid,
         ]
         if (not getattr(self, 'ignore_model_profiling', False) and
@@ -306,7 +309,8 @@ def model_profiling(model,
                     channel=3,
                     use_cuda=True,
                     num_forwards=10,
-                    verbose=True):
+                    verbose=True,
+                    encrypt=False):
     """ Pytorch model profiling with input image size
     (batch, channel, height, width).
     The function exams the number of multiply-accumulates (n_macs).
@@ -318,6 +322,7 @@ def model_profiling(model,
         batch: int
         channel: int
         use_cuda: bool
+        encrypt: bool - If True, encrypts the input tensor to a CrypTensor first.
 
     Returns:
         macs: int
@@ -325,10 +330,11 @@ def model_profiling(model,
 
     """
     model.eval()
-    # data = crypten.rand(batch, channel, height, width)
     data = torch.rand(batch, channel, height, width)
+    if encrypt: data = crypten.cryptensor(data)
     origin_device = next(model.parameters()).device
-    device = torch.device("cuda" if use_cuda and not CPU_OVERRIDE else "cpu")
+    # TODO cryptenify?
+    device = torch.device("cuda" if use_cuda else "cpu")
     model = model.to(device)
     data = data.to(device)
     model.apply(lambda m: add_profiling_hooks(m, num_forwards, verbose=verbose))
@@ -339,8 +345,9 @@ def model_profiling(model,
                      'nanosecs'.rjust(seconds_space, ' '))
         logging.info(''.center(
             name_space + params_space + macs_space + seconds_space, '-'))
-    with crypten.no_grad():
-        model(data)
+    with torch.no_grad():
+        with crypten.no_grad():
+            model(data)
     if verbose:
         logging.info(''.center(
             name_space + params_space + macs_space + seconds_space, '-'))

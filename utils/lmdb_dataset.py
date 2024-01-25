@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Modified from https://github.com/Lyken17/Efficient-PyTorch/blob/master/tools/folder2lmdb.py
 
 Usage:
@@ -6,6 +7,7 @@ Usage:
 """
 
 import os
+import pickle
 import six
 from PIL import Image
 
@@ -25,6 +27,10 @@ class ImageFolderLMDB(Dataset):
     """Lmdb dataset."""
 
     def __init__(self, db_path, transform=None, target_transform=None):
+        # Fix the path to something absolute
+        if not os.path.isabs(db_path):
+             db_path = os.path.join(os.getcwd(), db_path)
+
         self.db_path = db_path
         self.env = lmdb.open(db_path,
                              subdir=os.path.isdir(db_path),
@@ -33,8 +39,10 @@ class ImageFolderLMDB(Dataset):
                              readahead=False,
                              meminit=False)
         with self.env.begin(write=False) as txn:
-            self.length = pa.deserialize(txn.get(b'__len__'))
-            self.keys = pa.deserialize(txn.get(b'__keys__'))
+            # self.length = pa.deserialize(txn.get(b'__len__'))
+            # self.keys = pa.deserialize(txn.get(b'__keys__'))
+            self.length = pickle.loads(txn.get(b'__len__'))
+            self.keys = pickle.loads(txn.get(b'__keys__'))
 
         self.transform = transform
         self.target_transform = target_transform
@@ -44,7 +52,8 @@ class ImageFolderLMDB(Dataset):
         env = self.env
         with env.begin(write=False) as txn:
             byteflow = txn.get(self.keys[index])
-        unpacked = pa.deserialize(byteflow)
+        # unpacked = pa.deserialize(byteflow)
+        unpacked = pickle.loads(byteflow)
 
         # load image
         imgbuf = unpacked[0]
@@ -84,7 +93,9 @@ def dumps_pyarrow(obj):
     Returns:
         Implementation-dependent bytes-like object
     """
-    return pa.serialize(obj).to_buffer()
+
+    # return pa.serialize(obj).to_buffer()
+    return pickle.dumps(obj)
 
 
 def folder2lmdb(src_dir, dst_dir, name="train", write_frequency=5000):

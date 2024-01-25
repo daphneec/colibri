@@ -8,16 +8,15 @@ import re
 import yaml
 
 # singletone
-
-# Whether to use CPU (True) or fallback to default (GPU, False).
-# Optionally read from environment as `CPU_OVERRIDE=1`.
-if "CPU_OVERRIDE" in os.environ:
-    CPU_OVERRIDE = os.environ["CPU_OVERRIDE"] == "1"
-else:
-    CPU_OVERRIDE = False
-
 FLAGS = None
 _ENV_EXPAND = {}
+
+# CPU parameters
+DEVICE_MODE = "gpu"
+if "DEVICE_MODE" in os.environ:
+    DEVICE_MODE = os.environ["DEVICE_MODE"]
+    if DEVICE_MODE != "cpu" and DEVICE_MODE != "gpu":
+        raise ValueError(f"Unknown device mode '{DEVICE_MODE}'")
 
 
 def nested_set(dic, keys, value, existed=False):

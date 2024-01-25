@@ -1,8 +1,8 @@
 import warnings
 
-import torch.nn.functional as F
-import models.secure_upsample as upsample
 import numpy as np
+
+from models.secure_upsample import interpolate_nearest
 
 
 def resize(input,
@@ -11,14 +11,6 @@ def resize(input,
            mode='nearest',
            align_corners=None,
            warning=True):
-
-    # Assert some assumed input
-    if mode != "nearest":
-        raise ValueError(f"Secure mode does not support non-nearest resizing '{mode}'")
-    if align_corners is not None:
-        print("WARNING: mmseg.secure_utils.resize(): Ignored `align_corners` because mode is always `nearest`")
-
-    # Show some warning or something
     if warning:
         if size is not None and align_corners:
             input_h, input_w = input.shape[2:]
@@ -32,8 +24,8 @@ def resize(input,
                         'the output would more aligned if '
                         f'input size {(input_h, input_w)} is `x+1` and '
                         f'out size {(output_h, output_w)} is `nx+1`')
-
-    return upsample.interpolate(input, size, scale_factor)
+    if mode != "nearest": raise ValueError(f"`{mode}` resizing is not supported in Crypten, sorry")
+    return interpolate_nearest(input, size, scale_factor)
 
 
 def intersect_and_union(pred_label, label, num_classes, ignore_index):

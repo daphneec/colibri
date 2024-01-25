@@ -4,7 +4,7 @@
 # Created:
 #   21 Nov 2023, 16:57:38
 # Last edited:
-#   23 Nov 2023, 13:54:33
+#   05 Dec 2023, 11:33:08
 # Auto updated?
 #   Yes
 #
@@ -27,7 +27,7 @@ import torch
 
 
 ##### LIBRARY #####
-def interpolate(input: crypten.CrypTensor, size: typing.Optional[typing.Union[int, typing.Tuple[int], typing.Tuple[int, int], typing.Tuple[int, int, int]]] = None, scale_factor: typing.Optional[typing.Union[int, typing.Tuple[int], typing.Tuple[int, int], typing.Tuple[int, int, int]]] = None) -> crypten.CrypTensor:
+def interpolate_nearest(input: crypten.CrypTensor, size: typing.Optional[typing.Union[int, typing.Tuple[int], typing.Tuple[int, int], typing.Tuple[int, int, int]]] = None, scale_factor: typing.Optional[typing.Union[int, typing.Tuple[int], typing.Tuple[int, int], typing.Tuple[int, int, int]]] = None) -> crypten.CrypTensor:
     """
         Crypten equivalent for `torch.nn.functional.interpolate`, which performs nearest-neighbour upsampling on the given tensor.
 
@@ -171,4 +171,4 @@ class UpsampleNearest(cnn.Module):
         """
 
         # Simply call interpolate on x
-        return interpolate(x, self._size, self._scale_factor)
+        return interpolate_nearest(x, self._size, self._scale_factor)

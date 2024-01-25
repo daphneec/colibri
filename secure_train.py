@@ -3,9 +3,12 @@ import logging
 import os
 import time
 
+import crypten
+import crypten.nn as cnn
 import torch
+import subprocess
 
-from utils.config import FLAGS, _ENV_EXPAND
+from utils.config import DEVICE_MODE, FLAGS, _ENV_EXPAND
 from utils.common import get_params_by_name
 from utils.common import set_random_seed
 from utils.common import create_exp_dir
@@ -15,6 +18,7 @@ from utils.common import get_device
 from utils.common import extract_item
 from utils.common import get_data_queue_size
 from utils.common import bn_calibration
+from utils.fix_hook import fix_deps, fix_debug
 from utils import dataflow
 from utils import secure_optim as optim
 from utils import secure_distributed as udist
@@ -27,12 +31,10 @@ import secure_common as mc
 from mmseg.validation import SegVal, keypoint_val
 
 
-import crypten
-import crypten.nn as cnn
-from utils.fix_hook import fix_hook, fix_lib
+# STOP THE PRESSES: Fix `cnn.Module`s not having some of the functions we expect (but would support)
+fix_deps()
+fix_debug()
 
-fix_lib(crypten)
-fix_hook(cnn.Module)
 
 def shrink_model(model_wrapper,
                  ema,
@@ -81,11 +83,13 @@ def shrink_model(model_wrapper,
     if optimizer is not None:
         assert set(optimizer.param_groups[0]['params']) == set(
             model.parameters())
+
     mc.model_profiling(model,
                        FLAGS.image_size,
                        FLAGS.image_size,
                        num_forwards=0,
-                       verbose=False)
+                       verbose=False,
+                       use_cuda=DEVICE_MODE == "gpu")
     if udist.is_master():
         logging.info('Model Shrink to FLOPS: {}'.format(model.n_macs))
         logging.info('Current model: {}'.format(mb.output_network(model)))
@@ -160,8 +164,9 @@ def run_one_epoch(epoch,
     if train:
         model.train()
     else:
-        #possibly encryt here so model.eval() is deleted and replaced with alice and bob encrypted exhcange with crypten.init()
+        #possibly encrypt here so model.eval() is deleted and replaced with alice and bob encrypted exhcange with crypten.init()
         model.eval()
+
     if phase == 'bn_calibration':
         model.apply(bn_calibration)
 
@@ -196,7 +201,8 @@ def run_one_epoch(epoch,
             if batch_idx >= max_iter:
                 break
 
-        target = target.cuda(non_blocking=True)
+        if DEVICE_MODE == "gpu":
+            target = target.cuda(non_blocking=True)
         if train:
             optimizer.zero_grad()
             rho = rho_scheduler(FLAGS._global_step)
@@ -280,7 +286,6 @@ def run_one_epoch(epoch,
             if udist.is_master(
             ) and FLAGS._global_step % FLAGS.log_interval_detail == 0:
                 summary_bn(model, 'train')
-                
 
             optimizer.step()
             if FLAGS.lr_scheduler == 'poly':
@@ -338,24 +343,27 @@ def train_val_test():
     # model
     model, model_wrapper = mc.get_model()
     ema = mc.setup_ema(model)
-    #don't encryt this.
-    model_wrapper = model_wrapper
-    criterion = torch.nn.CrossEntropyLoss(reduction='mean').cuda()
+    criterion = torch.nn.CrossEntropyLoss(reduction='mean')
     criterion_smooth = optim.CrossEntropyLabelSmooth(
         FLAGS.model_kwparams['num_classes'],
         FLAGS['label_smoothing'],
-        reduction='mean').cuda()
+        reduction='mean')
     if model.task == 'segmentation':
-        criterion = CrossEntropyLoss().cuda()
-        criterion_smooth = CrossEntropyLoss().cuda()
+        criterion = CrossEntropyLoss()
+        criterion_smooth = CrossEntropyLoss()
     if FLAGS.dataset == 'coco':
-        criterion = JointsMSELoss(use_target_weight=True).cuda()
-        criterion_smooth = JointsMSELoss(use_target_weight=True).cuda()
+        criterion = JointsMSELoss(use_target_weight=True)
+        criterion_smooth = JointsMSELoss(use_target_weight=True)
+    # Make GPU only if necessary
+    if DEVICE_MODE == "gpu":
+        criterion = criterion.cuda()
+        criterion_smooth = criterion_smooth.cuda()
 
     if FLAGS.get('log_graph_only', False):
         if udist.is_master():
             _input = torch.zeros(1, 3, FLAGS.image_size,
-                                 FLAGS.image_size).cuda()
+                                 FLAGS.image_size)
+            if DEVICE_MODE == "gpu": _input = _input.cuda()
             _input = _input.requires_grad_(True)
             if isinstance(model_wrapper, (torch.nn.DataParallel, udist.AllReduceDistributedDataParallel)):
                 mc.summary_writer.add_graph(model_wrapper.module, (_input,), verbose=True)
@@ -400,12 +408,16 @@ def train_val_test():
         for state in optimizer.state.values():
             for k, v in state.items():
                 if isinstance(v, torch.Tensor):
-                    state[k] = v.cuda()
+                    if DEVICE_MODE == "cpu":
+                        state[k] = v
+                    else:
+                        state[k] = v.cuda()
         # model_wrapper.load_state_dict(checkpoint['model'])
         # optimizer.load_state_dict(checkpoint['optimizer'])
         if ema:
             # ema.load_state_dict(checkpoint['ema'])
-            ema = checkpoint['ema'].cuda()
+            ema = checkpoint['ema']
+            if DEVICE_MODE == "cpu": ema = ema.cuda()
             ema.to(get_device(model))
         last_epoch = checkpoint['last_epoch']
         lr_scheduler = optim.get_lr_scheduler(optimizer, FLAGS, last_epoch=(last_epoch + 1) * FLAGS._steps_per_epoch)
@@ -447,6 +459,7 @@ def train_val_test():
             mc.profiling(model, use_cuda=True)
         if 'cpu' in FLAGS.profiling:
             mc.profiling(model, use_cuda=False)
+    print(f"Has n_params? {hasattr(model, 'n_params')}")
 
     if FLAGS.dataset == 'cityscapes':
         (train_set, val_set, test_set) = seg_dataflow.cityscapes_datasets(FLAGS)
@@ -571,37 +584,9 @@ def validate(epoch, calib_loader, val_loader, criterion, val_meters,
                 logging.warning(
                     'Only GPU0 is used when calibration when use DataParallel')
             with torch.no_grad():
-                _ = run_one_epoch(epoch,
-                                  calib_loader,
-                                  model_eval_wrapper,
-                                  criterion,
-                                  None,
-                                  None,
-                                  None,
-                                  None,
-                                  val_meters,
-                                  max_iter=FLAGS.bn_calibration_steps,
-                                  phase='bn_calibration')
-            if FLAGS.use_distributed:
-                udist.allreduce_bn(model_eval_wrapper)
-
-    # val
-    with torch.no_grad():
-        if FLAGS.model_kwparams.task == 'segmentation':
-            if FLAGS.dataset == 'coco':
-                results = 0
-                if udist.is_master():
-                    results = keypoint_val(val_set, val_loader, model_eval_wrapper.module, criterion)
-            else:
-                assert segval is not None
-                results = segval.run(epoch,
-                                     val_loader,
-                                     model_eval_wrapper.module if FLAGS.single_gpu_test else model_eval_wrapper,
-                                     FLAGS)
-        else:
-            # encrypt model here or modify run_one_epoch so that in test or val mode, it runs a special secure MPC evaluation on an encrypt network
-            results = run_one_epoch(epoch,
-                                    val_loader,
+                with crypten.no_grad():
+                    _ = run_one_epoch(epoch,
+                                    calib_loader,
                                     model_eval_wrapper,
                                     criterion,
                                     None,
@@ -609,7 +594,37 @@ def validate(epoch, calib_loader, val_loader, criterion, val_meters,
                                     None,
                                     None,
                                     val_meters,
-                                    phase=phase)
+                                    max_iter=FLAGS.bn_calibration_steps,
+                                    phase='bn_calibration')
+            if FLAGS.use_distributed:
+                udist.allreduce_bn(model_eval_wrapper)
+
+    # val
+    with torch.no_grad():
+        with crypten.no_grad():
+            if FLAGS.model_kwparams.task == 'segmentation':
+                if FLAGS.dataset == 'coco':
+                    results = 0
+                    if udist.is_master():
+                        results = keypoint_val(val_set, val_loader, model_eval_wrapper.module, criterion)
+                else:
+                    assert segval is not None
+                    results = segval.run(epoch,
+                                        val_loader,
+                                        model_eval_wrapper.module if FLAGS.single_gpu_test else model_eval_wrapper,
+                                        FLAGS)
+            else:
+                # encrypt model here or modify run_one_epoch so that in test or val mode, it runs a special secure MPC evaluation on an encrypt network
+                results = run_one_epoch(epoch,
+                                        val_loader,
+                                        model_eval_wrapper,
+                                        criterion,
+                                        None,
+                                        None,
+                                        None,
+                                        None,
+                                        val_meters,
+                                        phase=phase)
     summary_bn(model_eval_wrapper, phase)
     return results, model_eval_wrapper
 

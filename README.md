@@ -53,6 +53,11 @@ Node 2:
 
 ## Datasets
 
+0. Fake dataset (ImageNet)
+    - Generate fake data in torchvision ImageFolder format by running `tools/generate_fake_data.py ./data/fake -f` in the repo root
+    - Convert to lmdb by running `utils/lmdb_dataset.py --src_dir ./data/fake --dst_dir ./data/imagenet_lmdb` in the repo root
+    - Now run the YAMLs with `dataset:imagenet1k_lmdb`
+
 1. ImageNet
     - Prepare ImageNet data following pytorch [example](https://github.com/pytorch/examples/tree/master/imagenet).
     - Optional: Generate lmdb dataset by `utils/lmdb_dataset.py`. If not, please overwrite `dataset:imagenet1k_lmdb` in yaml to `dataset:imagenet1k`.

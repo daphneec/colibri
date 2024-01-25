@@ -14,6 +14,7 @@ from utils.common import add_prefix
 from utils.common import get_device
 from models.transformer import Transformer
 
+
 def _make_divisible(v, divisor, min_value=None):
     """Make channels divisible to divisor.
 
