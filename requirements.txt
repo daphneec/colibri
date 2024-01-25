@@ -1,5 +1,7 @@
+
 pillow==9.0.0
 pillow-simd==9.0.0.post
+
 torch>=1.4
 torchvision>=0.5
 pyyaml>=3.13
@@ -11,6 +13,7 @@ packaging
 matplotlib
 yacs
 cityscapesscripts
+
 # pyarrow==0.17.1
 pyarrow
 mmcv-full

@@ -91,7 +91,7 @@ def shrink_model(model_wrapper,
                        verbose=False,
                        use_cuda=DEVICE_MODE == "gpu")
     if udist.is_master():
-        logging.info('Model Shrink to FLOPS: {}'.format(model.n_macs))
+        logging.info('Model Shrink to FLOPS: {}'.format(model.n_seconds))#logging.info('Model Shrink to FLOPS: {}'.format(model.n_macs))
         logging.info('Current model: {}'.format(mb.output_network(model)))
 
 
