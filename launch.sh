@@ -54,5 +54,5 @@ echo "[launch.sh] Extracted node rank '$RANK'"
 # Run start.sh
 cmd="./start.sh \"$MODE\" \"$CONFIG_FILE\" -N \"$NUM_NODES\" --gpus \"$GPUS_PER_NODE\" --rank \"$RANK\" --master-addr \"$MASTER_ADDR\" --master-port \"$MASTER_PORT\""
 echo "[launch.sh] Continuing as '$cmd'"
-bash -c "$cmd" || exit $?
+srun bash -c "$cmd" || exit $?
 
