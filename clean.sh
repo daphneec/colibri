@@ -13,7 +13,7 @@ cd "${0%/*}"
 echo "[clean.sh] Cleaning 'output' directory"
 rm -rf ./output
 # Clean the miniconda
-miniconda_path="$HOME/miniconda_py311"
+miniconda_path="$(pwd)/miniconda_py311"
 if [[ -d "$miniconda_path" ]]; then
     echo "[clean.sh] Removing '$miniconda_path' virtual environment"
     rm -rf "$miniconda_path"

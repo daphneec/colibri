@@ -82,7 +82,7 @@ elif [[ ! -z "$distro" ]]; then
 fi
 
 # Install anaconda with the correct version
-miniconda_path="$HOME/miniconda_py311"
+miniconda_path="$(pwd)/miniconda_py311"
 if [[ ! -d "$miniconda_path" ]]; then
     echo "[install.sh] Installing Miniconda to '$miniconda_path'..."
     wget https://repo.anaconda.com/miniconda/Miniconda3-py311_23.11.0-2-Linux-x86_64.sh -O "$HOME/miniconda_py311_installer.sh" || exit $?

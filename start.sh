@@ -176,12 +176,13 @@ fi
 
 # Find anaconda
 echo "[start.sh] Initializing miniconda..."
-miniconda_path="$HOME/miniconda_py311"
+miniconda_path="$(pwd)/miniconda_py311"
 if [[ ! -d "$miniconda_path" ]]; then
     2>&1 echo "[start.sh] ERROR: Miniconda environment '$miniconda_path' not found"
     exit 1
 fi
-export PATH="$miniconda_path/bin:$PATH"
+. "$miniconda_path/etc/profile.d/conda.sh"
+conda activate
 py_path="$(which python3)"
 echo "[start.sh] Using python3 from '$py_path'"
 if [[ "$py_path" != "$miniconda_path/bin/python3" ]]; then
