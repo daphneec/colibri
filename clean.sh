@@ -10,8 +10,14 @@
 cd "${0%/*}"
 
 # Clean the output
-echo "Cleaning 'output' directory"
+echo "[clean.sh] Cleaning 'output' directory"
 rm -rf ./output
-# Clean the venv
-echo "Cleaning 'venv' directory"
-rm -rf ./venv
+# Clean the miniconda
+miniconda_path="$HOME/miniconda_py311"
+if [[ -d "$miniconda_path" ]]; then
+    echo "[clean.sh] Removing '$miniconda_path' virtual environment"
+    rm -rf "$miniconda_path"
+else
+    echo "[clean.sh] WARNING: Miniconda at '$miniconda_path' not found, not cleaning it"
+fi
+

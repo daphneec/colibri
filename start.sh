@@ -19,14 +19,148 @@ old_pwd="$(pwd)"
 # Always work in the script's directory
 cd "${0%/*}"
 
-# Read the arguments
-if [[ "$#" -eq 2 && ("$1" == "normal" || "$1" == "secure") ]]; then
-    # Store the two
-    mode="$1"
-    path="$2"
-else
-    2>&1 echo "Usage: $0 normal|secure PATH_TO_CONFIG_YAML"
+
+
+### CLI ARGUMENT PARSING ###
+mode=
+path=
+N=1
+master_addr=localhost
+master_port=1234
+rank=0
+gpus=1
+state=start
+parsing_arg=
+allow_opts=1
+pos_i=0
+errored=0
+i=0
+args=( $@ )
+while [[ "$i" -lt "${#args[@]}" ]]; do
+    arg="${args[$i]}"
+
+    # Match on the parse state first
+    if [[ "$state" == "start" ]]; then
+        if [[ "$allow_opts" -eq 1 && "$arg" =~ ^- ]]; then
+            # It's an option
+            if [[ "$arg" == "-N" || "$arg" == "--nnodes" ]]; then
+	        # Parse the argument in the next iter
+                parsing_arg="nnodes"
+                state="arg"
+            elif [[ "$arg" == "-a" || "$arg" == "--master-addr" ]]; then
+                # Parse the argument in the next iter
+                parsing_arg="master-addr"
+                state="arg"
+            elif [[ "$arg" == "-p" || "$arg" == "--master-port" ]]; then
+                # Parse the argument in the next iter
+                parsing_arg="master-port"
+                state="arg"
+            elif [[ "$arg" == "-r" || "$arg" == "--rank" ]]; then
+                # Parse the argument in the next iter
+                parsing_arg="rank"
+                state="arg"
+            elif [[ "$arg" == "-g" || "$arg" == "--gpus" ]]; then
+                # Parse the argument in the next iter
+                parsing_arg="gpus"
+                state="arg"
+            elif [[ "$arg" == "-h" || "$arg" == "--help" ]]; then
+	        echo "Usage: $0 [OPTS] <normal|secure> <CONFIG_PATH>"
+                echo ""
+                echo "Arguments:"
+                echo "  - <normal|secure>  Which mode to enable. Use 'normal' to run the (almost) vanilla HR-NAS,"
+                echo "                     or 'secure' to run the CrypTen version."
+                echo "  - <CONFIG_PATH>    The path to the config file denoting which model to use. See 'README.md'"
+                echo "                     for more information."
+                echo ""
+                echo "Options:"
+                echo "  -N,--nnodes <N>  The number of nodes that are part of this instance. Default: '1'"
+                echo "  -a,--master-addr <ADDR>"
+                echo "                   The address of the master node for this session. Default: 'localhost'"
+                echo "  -p,--master-port <PORT>"
+                echo "                   The port number on which to reach the master node for this session. Default: '1234'"
+                echo "  -r,--rank <NUM>  The rank of this node. Should be a number, starting at 0 for the first node. Default: '0'"
+                echo "  -g,--gpus <N>    Sets the number of GPUs to use -per node-. Default: '1'"
+                echo "  -h,--help        Shows this help menu, then exits."
+                echo ""
+                exit 0
+            else
+	        2>&1 echo "Unknown option '$arg'"
+                errored=1
+            fi
+        else
+	    # Parse the positional index
+	    if [[ "$pos_i" -eq 0 ]]; then
+                mode="$arg"
+	    elif [[ "$pos_i" -eq 1 ]]; then
+	        path="$arg"
+	    else
+	        2>&1 echo "Unknown positional '$arg' at position $pos_i"
+                errored=1
+	    fi
+	    pos_i=$((pos_i+1))
+        fi
+
+        # Don't forget to increment i
+        i=$((i+1))
+    elif [[ "$state" == "arg" ]]; then
+        # See if it's a '--'
+        if [[ "$allow_opts" -eq 1 && "$arg" == "--" ]]; then
+            allow_opts=0
+            i=$((i+1))
+        elif [[ "$arg" =~ ^- ]]; then
+	    # Not given!
+            2>&1 echo "Missing value for '--$parsing_arg'"
+            errored=1
+            # Dont increment i tho, to parse the option correctly
+            state="start"
+        else
+            # Match on the argument
+            if [[ "$parsing_arg" == "nnodes" ]]; then
+                N="$arg"
+            elif [[ "$parsing_arg" == "master-addr" ]]; then
+                master_addr="$arg"
+            elif [[ "$parsing_arg" == "master-port" ]]; then
+                master_port="$arg"
+            elif [[ "$parsing_arg" == "rank" ]]; then
+                rank="$arg"
+            elif [[ "$parsing_arg" == "gpus" ]]; then
+                gpus="$arg"
+            else
+                2>&1 echo "[start.sh] PANIC: Unknown parsing argument '$parsing_arg'"
+                exit 1
+            fi
+
+            # Increment i before contuining
+            i=$((i+1))
+            state="start"
+        fi
+    else
+        2>&1 echo "[start.sh] PANIC: Unknown parse state '$state'"
+        exit 1
+    fi
+done
+if [[ -z "$mode" ]]; then
+    2>&1 echo "Missing mandatory positional argument '<normal|secure>'"
+    errored=1
+fi
+if [[ -z "$path" ]]; then
+    2>&1 echo "Missing mandatory positional argument '<CONFIG_PATH>'"
+    errored=1
+fi
+if [[ "$errored" -eq 1 ]]; then
     exit 1
+fi
+
+
+
+
+
+### EXECUTION ###
+# Resolve the master address to an IP, always
+if [[ ! "$master_addr" =~ ^[0-9]{1-3}\. ]]; then
+    ip="$(host -4 $master_addr | awk '/has address/ { print $4 }')"
+    echo "[start.sh] Resolved '$master_addr' as '$ip'"
+    master_addr="$ip"
 fi
 
 # Resolve the executable
@@ -40,11 +174,25 @@ if [[ "$path" != /* ]]; then
     path="$old_pwd/$path"
 fi
 
-# Use the virtual environment
-source ./venv/bin/activate || exit "$?"
+# Find anaconda
+echo "[start.sh] Initializing miniconda..."
+miniconda_path="$HOME/miniconda_py311"
+if [[ ! -d "$miniconda_path" ]]; then
+    2>&1 echo "[start.sh] ERROR: Miniconda environment '$miniconda_path' not found"
+    exit 1
+fi
+export PATH="$miniconda_path/bin:$PATH"
+py_path="$(which python3)"
+echo "[start.sh] Using python3 from '$py_path'"
+if [[ "$py_path" != "$miniconda_path/bin/python3" ]]; then
+    2>&1 echo "[start.sh] PANIC: Not using python3 from Miniconda; got '$py_path', expected '$miniconda_path/bin/python3'"
+    exit 1
+fi
 
 # Alright now hit pytorch
 if [[ "$path" =~ "cpu" ]]; then
     export DEVICE_MODE="cpu"
 fi
-torchrun --nnodes 1 --nproc_per_node=1 --node_rank=0 "./$exec" "app:$path"
+cmd="torchrun --nnodes=$N --nproc_per_node=$gpus --node_rank=$rank --master-addr=$master_addr --master-port=$master_port \"./$exec\" \"app:$path\""
+echo "[start.sh] Launching '$cmd'"
+bash -c "$cmd" || exit "$?"
