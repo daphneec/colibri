@@ -4,3 +4,4 @@ venv
 data/cityscapes
 data/fake
 data/imagenet_lmdb
+miniconda_py311
