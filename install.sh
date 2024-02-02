@@ -9,7 +9,7 @@
 # Read CLIi
 distro=
 ivi=0
-cuda=latest
+cuda_to_install=latest
 run_clean=0
 allow_opts=1
 pos_i=0
@@ -22,8 +22,11 @@ for arg in $@; do
 	    run_clean=1
 	elif [[ "$arg" == "-c11" || "$arg" == "--cuda11" ]]; then
 	    # Mark that we're using CUDA 11 mode instead
-	    cuda=11
-	elif [[ "$arg" == "-i" || "$arg" == "--ivi" ]]; then
+	    cuda_to_install=11
+        elif [[ "$arg" == "-c12" || "$arg" == "--cuda12" ]]; then
+	    # Mark the newer cuda version
+	    cuda_to_install=12
+        elif [[ "$arg" == "-i" || "$arg" == "--ivi" ]]; then
 	    # Enable IvI mode
 	    ivi=1
         elif [[ "$arg" == "-h" || "$arg" == "--help" ]]; then
@@ -35,7 +38,8 @@ for arg in $@; do
             echo ""
 	    echo "Options:"
 	    echo "  -c,--clean     Runs the 'clean.sh' script before installing new things."
-            echo "  -c11,--cuda11  Uses an alternative 'requirements.txt' that uses CUDA 11-compatible versions."
+            echo "  -c11,--cuda11  Installs CUDA toolkit version 11.4 instead of the latest."
+	    echo "  -c12,--cuda12  Installs CUDA toolkit version 12.3 instead of the latest."
             echo "  -i,--ivi       If given, runs this in IvI cluster compatability mode."
 	    echo "  -h,--help      Shows this help menu, then exits."
             echo ""
@@ -84,9 +88,16 @@ fi
 # Install anaconda with the correct version
 miniconda_path="$(pwd)/miniconda_py311"
 if [[ ! -d "$miniconda_path" ]]; then
+    miniconda_installer_path="$(pwd)/miniconda_py311_installer.sh"
+    if [[ ! -f "$miniconda_installer_path" ]]; then
+        echo "[install.sh] Downloading miniconda installer to '$miniconda_installer_path'..."
+        wget https://repo.anaconda.com/miniconda/Miniconda3-py311_23.11.0-2-Linux-x86_64.sh -O "$miniconda_installer_path" || exit $?
+    else
+	echo "[install.sh] Miniconda installer at '$miniconda_installer_path' already exists"
+    fi
+
     echo "[install.sh] Installing Miniconda to '$miniconda_path'..."
-    wget https://repo.anaconda.com/miniconda/Miniconda3-py311_23.11.0-2-Linux-x86_64.sh -O "$HOME/miniconda_py311_installer.sh" || exit $?
-    bash "$HOME/miniconda_py311_installer.sh" -b -p "$miniconda_path" || exit $?
+    bash "$miniconda_installer_path" -b -p "$miniconda_path" || exit $?
 else
     echo "[install.sh] Miniconda at '$miniconda_path' already exists, not installing"
 fi
@@ -104,17 +115,14 @@ fi
 
 echo "[install.sh] Installing torch & torchvision using conda..."
 if [[ "$ivi" -eq 1 ]]; then source /opt/rh/devtoolset-10/enable; fi
-conda install -y pytorch torchvision 'cudatoolkit=11.4' -c pytorch -c conda-forge || exit $?
+toolkitver=
+if [[ "$cuda_to_install" -eq 11 ]]; then toolkitver='=11.4'; fi
+if [[ "$cuda_to_install" -eq 12 ]]; then toolkitver='=12.3'; fi
+conda install -y pytorch torchvision torchaudio "pytorch-cuda$toolkitver" -c pytorch -c nvidia || exit $?
 
 echo "[install.sh] Installing dependencies in requirements.txt..."
-if [[ "$cuda" == "latest" ]]; then
-    bash -c "SKLEARN_ALLOW_DEPRECATED_SKLEARN_PACKAGE_INSTALL=True python3 -m pip install -r ./requirements.txt" || exit "$?"
-elif [[ "$cuda" == "11" ]]; then
-    bash -c "SKLEARN_ALLOW_DEPRECATED_SKLEARN_PACKAGE_INSTALL=True python3 -m pip install -r ./requirements_cuda11.txt" || exit "$?"
-else
-    2>&1 echo "Unknown CUDA mode '$cuda'"
-    exit 1
-fi
+bash -c "SKLEARN_ALLOW_DEPRECATED_SKLEARN_PACKAGE_INSTALL=True python3 -m pip install -r ./requirements.txt" || exit "$?"
 
 # Alrighty that's it
 echo "[install.sh] Success"
+

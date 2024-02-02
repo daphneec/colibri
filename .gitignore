@@ -5,3 +5,4 @@ data/cityscapes
 data/fake
 data/imagenet_lmdb
 miniconda_py311
+miniconda_py311_installer.sh

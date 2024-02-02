@@ -25,7 +25,7 @@ cd "${0%/*}"
 mode=
 path=
 N=1
-master_addr=localhost
+master_addr="127.0.0.1"
 master_port=1234
 rank=0
 gpus=1
@@ -75,7 +75,7 @@ while [[ "$i" -lt "${#args[@]}" ]]; do
                 echo "Options:"
                 echo "  -N,--nnodes <N>  The number of nodes that are part of this instance. Default: '1'"
                 echo "  -a,--master-addr <ADDR>"
-                echo "                   The address of the master node for this session. Default: 'localhost'"
+                echo "                   The address of the master node for this session. Default: '127.0.0.1'"
                 echo "  -p,--master-port <PORT>"
                 echo "                   The port number on which to reach the master node for this session. Default: '1234'"
                 echo "  -r,--rank <NUM>  The rank of this node. Should be a number, starting at 0 for the first node. Default: '0'"
@@ -157,7 +157,7 @@ fi
 
 ### EXECUTION ###
 # Resolve the master address to an IP, always
-if [[ ! "$master_addr" =~ ^[0-9]{1-3}\. ]]; then
+if [[ ! "$master_addr" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     ip="$(host -4 $master_addr | awk '/has address/ { print $4 }')"
     echo "[start.sh] Resolved '$master_addr' as '$ip'"
     master_addr="$ip"
