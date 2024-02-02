@@ -6,7 +6,7 @@
 #SBATCH -t 150:00:00
 #SBATCH --mem=240G
 #SBATCH -p all
-#SBATCH -o /home/tmuller/colibri/logs_%j.out
+#SBATCH -o "%CURRENT_FOLDER%/logs_%j.out"
 
 # GLOBALS
 NUM_NODES=1
@@ -15,7 +15,7 @@ MODE=normal                            # Change to 'secure' for CrypTen
 CONFIG_FILE=configs/cls_imagenet.yml   # Change to 'secure_....yml' for CrypTen
 
 # Go to the folder
-cd /home/tmuller/colibri
+cd "%CURRENT_FOLDER%"
 
 # Extract the properties we need
 MASTER_ADDR=$(python3 - "$SLURM_NODELIST" << EOF
