@@ -15,6 +15,7 @@ from models.secure_layernorm import LayerNorm
 import models.secure_transformer as transformer
 from utils import distributed as udist
 from utils.config import DEVICE_MODE
+from utils.secure_profiling_prediction import conv_time_cal
 
 model_profiling_hooks = []
 model_profiling_speed_hooks = []
@@ -97,12 +98,13 @@ def module_profiling(self, input, output, num_forwards, verbose):
         self._profiling_input_size = ins
         self._profiling_output_size = outs
     if isinstance(self, cnn.Conv2d):
-        self.n_macs = (ins[1] * outs[1] * self.kernel_size[0] *
-                       self.kernel_size[1] * outs[2] * outs[3] //
-                       self.groups) * outs[0]
-        self.n_params = get_params(self)
-        self.n_seconds = 1
+        # self.n_macs = (ins[1] * outs[1] * self.kernel_size[0] *
+        #                self.kernel_size[1] * outs[2] * outs[3] //
+        #                self.groups) * outs[0]
+        # self.n_params = get_params(self)
+        self.n_seconds = conv_time_cal(ins, outs, self.kernel_size) # calculated in ms
         self.name = conv_module_name_filter(self.__repr__())
+        print("******* CONV n_seconds", self.n_seconds)
     # TODO cryptenify
     # elif isinstance(self, nn.ConvTranspose2d):
     #     self.n_macs = (ins[1] * outs[1] * self.kernel_size[0] *

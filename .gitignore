@@ -4,3 +4,6 @@ venv
 data/cityscapes
 data/fake
 data/imagenet_lmdb
+tests/test_secure_profilling.py
+utils/.DS_Store
+.DS_Store
