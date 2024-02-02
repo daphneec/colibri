@@ -182,7 +182,7 @@ if [[ ! -d "$miniconda_path" ]]; then
     exit 1
 fi
 . "$miniconda_path/etc/profile.d/conda.sh"
-conda activate
+conda activate || exit "$?"
 py_path="$(which python3)"
 echo "[start.sh] Using python3 from '$py_path'"
 if [[ "$py_path" != "$miniconda_path/bin/python3" ]]; then
@@ -197,3 +197,4 @@ fi
 cmd="torchrun --nnodes=$N --nproc_per_node=$gpus --node_rank=$rank --master-addr=$master_addr --master-port=$master_port \"./$exec\" \"app:$path\""
 echo "[start.sh] Launching '$cmd'"
 bash -c "$cmd" || exit "$?"
+
