@@ -75,7 +75,7 @@ def module_profiling(self, input, output, num_forwards, verbose):
         #m.n_params += getattr(sub_op, 'n_params', 0)
         m.n_seconds += getattr(sub_op, 'n_seconds', 0)
         
-    #_run_forward = functools.partial(run_forward, num_forwards=num_forwards)
+    _run_forward = functools.partial(run_forward, num_forwards=num_forwards)
     # if isinstance(self, (hr.ParallelModule, hr.FuseModule, hr.HeadModule)) \
     #     or (isinstance(self, nn.Sequential) and isinstance(self[0], hr.ParallelModule)):
     if not input:
