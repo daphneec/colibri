@@ -22,9 +22,6 @@ for arg in $@; do
 	elif [[ "$arg" == "-c11" || "$arg" == "--cuda11" ]]; then
 	    # Mark that we're using CUDA 11 mode instead
 	    cuda_to_install=11
-        elif [[ "$arg" == "-c12" || "$arg" == "--cuda12" ]]; then
-	    # Mark the newer cuda version
-	    cuda_to_install=12
         elif [[ "$arg" == "-h" || "$arg" == "--help" ]]; then
             # Show the help thing
 	    echo "Usage: $0 [<OPTS>] [<DISTRO>]"
@@ -35,7 +32,6 @@ for arg in $@; do
 	    echo "Options:"
 	    echo "  -c,--clean     Runs the 'clean.sh' script before installing new things."
             echo "  -c11,--cuda11  Installs CUDA toolkit version 11.4 instead of the latest."
-	    echo "  -c12,--cuda12  Installs CUDA toolkit version 12.3 instead of the latest."
 	    echo "  -h,--help      Shows this help menu, then exits."
             echo ""
             exit 0
@@ -111,7 +107,6 @@ fi
 echo "[install.sh] Installing torch & torchvision using conda..."
 toolkitver=
 if [[ "$cuda_to_install" -eq 11 ]]; then toolkitver='=11.8'; fi
-if [[ "$cuda_to_install" -eq 12 ]]; then toolkitver='=12.3'; fi
 conda install -y pytorch torchvision torchaudio "pytorch-cuda$toolkitver" -c pytorch -c nvidia || exit $?
 
 echo "[install.sh] Installing dependencies in requirements.txt..."
