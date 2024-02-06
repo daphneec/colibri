@@ -9,6 +9,7 @@
 # Read CLIi
 distro=
 cuda_to_install=latest
+ivi=0
 run_clean=0
 allow_opts=1
 pos_i=0
@@ -16,42 +17,46 @@ errored=0
 for arg in $@; do
     # Match on option or not
     if [[ "$allow_opts" -eq 1 && "$arg" =~ ^- ]]; then
-	if [[ "$arg" == "-c" || "$arg" == "--clean" ]]; then
-	    # Mark we seen it
-	    run_clean=1
-	elif [[ "$arg" == "-c11" || "$arg" == "--cuda11" ]]; then
-	    # Mark that we're using CUDA 11 mode instead
-	    cuda_to_install=11
+        if [[ "$arg" == "-i" || "$arg" == "--ivi" ]]; then
+            # Mark we seen it
+            ivi=1
+        elif [[ "$arg" == "-c" || "$arg" == "--clean" ]]; then
+            # Mark we seen it
+            run_clean=1
+        elif [[ "$arg" == "-c11" || "$arg" == "--cuda11" ]]; then
+            # Mark that we're using CUDA 11 mode instead
+            cuda_to_install=11
         elif [[ "$arg" == "-h" || "$arg" == "--help" ]]; then
             # Show the help thing
-	    echo "Usage: $0 [<OPTS>] [<DISTRO>]"
+            echo "Usage: $0 [<OPTS>] [<DISTRO>]"
             echo ""
             echo "Where <DISTRO> is an optional identifier indicating you like to install required system packages:"
             echo " - 'debian' | 'ubuntu' to install with 'apt-get'"
             echo ""
-	    echo "Options:"
-	    echo "  -c,--clean     Runs the 'clean.sh' script before installing new things."
+            echo "Options:"
+            echo "  -i,--ivi       Enables some environment variables necessary on the IvI cluster."
+            echo "  -c,--clean     Runs the 'clean.sh' script before installing new things."
             echo "  -c11,--cuda11  Installs CUDA toolkit version 11.4 instead of the latest."
-	    echo "  -h,--help      Shows this help menu, then exits."
+            echo "  -h,--help      Shows this help menu, then exits."
             echo ""
             exit 0
-	elif [[ "$arg" == "--" ]]; then
-	    # No longer allow the options
-	    allow_opts=0
-	else
-	    >&2 echo "Unknown option '$arg'"
-	    errored=1
-	fi
-    else
-	# Recognize the positional argument
-	if [[ "$pos_i" -eq 0 ]]; then
-	    # It's the distro
-	    distro="$arg"
-	else
-	    >&2 echo "Unexpected positional argument '$arg'"
-	    errored=1
-	fi
-	pos_i=$((pos_i+1))
+        elif [[ "$arg" == "--" ]]; then
+            # No longer allow the options
+            allow_opts=0
+        else
+            >&2 echo "Unknown option '$arg'"
+            errored=1
+        fi
+        else
+        # Recognize the positional argument
+        if [[ "$pos_i" -eq 0 ]]; then
+            # It's the distro
+            distro="$arg"
+        else
+            >&2 echo "Unexpected positional argument '$arg'"
+            errored=1
+        fi
+        pos_i=$((pos_i+1))
     fi
 done
 if [[ "$errored" -eq 1 ]]; then
@@ -94,7 +99,6 @@ else
 fi
 
 # Assert we're now using the correct pip
-# export PATH="$miniconda_path/bin:$PATH"
 . "$miniconda_path/etc/profile.d/conda.sh"
 conda activate
 py_path=$(which python3)
@@ -105,6 +109,7 @@ if [[ "$py_path" != "$miniconda_path/bin/python3" ]]; then
 fi
 
 echo "[install.sh] Installing torch & torchvision using conda..."
+if [[ "$ivi" -eq 1 ]]; then source /opt/rh/devtoolset-10/enable; fi
 toolkitver=
 if [[ "$cuda_to_install" -eq 11 ]]; then toolkitver='=11.8'; fi
 conda install -y pytorch torchvision torchaudio "pytorch-cuda$toolkitver" -c pytorch -c nvidia || exit $?
