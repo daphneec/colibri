@@ -2,8 +2,8 @@
 pillow==9.0.0
 pillow-simd==9.0.0.post
 
-torch>=1.4
-torchvision>=0.5
+# torch>=1.4
+# torchvision>=0.5
 pyyaml>=3.13
 opencv-python
 tqdm
