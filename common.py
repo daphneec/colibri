@@ -285,7 +285,7 @@ def setup_distributed(num_images=None):
     """Setup distributed related parameters."""
     # init distributed
     if FLAGS.use_distributed:
-        udist.init_dist(backend="gloo")
+        udist.init_dist(backend="nccl" if DEVICE_MODE == "gpu" else "gloo")
         FLAGS.batch_size = udist.get_world_size() * FLAGS.per_gpu_batch_size
         FLAGS._loader_batch_size = FLAGS.per_gpu_batch_size
         if FLAGS.bn_calibration:

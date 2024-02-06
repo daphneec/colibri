@@ -76,8 +76,8 @@ def conv_module_name_filter(name):
 
 def module_profiling(self, input, output, num_forwards, verbose):
     def add_sub(m, sub_op):
-        #m.n_macs += getattr(sub_op, 'n_macs', 0)
-        #m.n_params += getattr(sub_op, 'n_params', 0)
+        m.n_macs += getattr(sub_op, 'n_macs', 0)
+        m.n_params += getattr(sub_op, 'n_params', 0)
         m.n_seconds += getattr(sub_op, 'n_seconds', 0)
 
     # _run_forward = functools.partial(run_forward, num_forwards=num_forwards)
@@ -98,10 +98,10 @@ def module_profiling(self, input, output, num_forwards, verbose):
         self._profiling_input_size = ins
         self._profiling_output_size = outs
     if isinstance(self, cnn.Conv2d):
-        # self.n_macs = (ins[1] * outs[1] * self.kernel_size[0] *
-        #                self.kernel_size[1] * outs[2] * outs[3] //
-        #                self.groups) * outs[0]
-        # self.n_params = get_params(self)
+        self.n_macs = (ins[1] * outs[1] * self.kernel_size[0] *
+                       self.kernel_size[1] * outs[2] * outs[3] //
+                       self.groups) * outs[0]
+        self.n_params = get_params(self)
         self.n_seconds = conv_time_cal(ins, outs, self.kernel_size) # calculated in ms
         self.name = conv_module_name_filter(self.__repr__())
         print(f"******* CONV n_seconds: {self.n_seconds} ms *******")
@@ -245,8 +245,8 @@ def module_profiling(self, input, output, num_forwards, verbose):
 
         self.n_seconds = 0
         add_sub(self, self.out_proj)
-        #self.n_macs += 2 * input[0].shape[0] * input[1].shape[0] * input[0].shape[2] + \
-        #    4 * input[0].shape[0] * input[0].shape[2] * input[0].shape[2]
+        self.n_macs += 2 * input[0].shape[0] * input[1].shape[0] * input[0].shape[2] + \
+           4 * input[0].shape[0] * input[0].shape[2] * input[0].shape[2]
         self.name = self.__repr__()
     elif isinstance(self, hrb.HighResolutionModule):
         self.n_macs = 0
@@ -280,18 +280,17 @@ def module_profiling(self, input, output, num_forwards, verbose):
         self.name = self.__repr__()
     else:
         # This works only in depth-first travel of modules.
-        #self.n_macs = 0
-        #self.n_params = 0
+        self.n_macs = 0
+        self.n_params = 0
         self.n_seconds = 0
         num_children = 0
         for m in self.children():
-            #self.n_macs += getattr(m, 'n_macs', 0)
-            #self.n_params += getattr(m, 'n_params', 0)
+            self.n_macs += getattr(m, 'n_macs', 0)
+            self.n_params += getattr(m, 'n_params', 0)
             self.n_seconds += 0.001#getattr(m, 'n_seconds', 0)
             num_children += 1
         ignore_zeros_t = [
             cnn.BatchNorm2d,
-            # TODO cryptenify
             LayerNorm,
             cnn.Dropout2d,
             cnn.Dropout,
@@ -302,23 +301,21 @@ def module_profiling(self, input, output, num_forwards, verbose):
             mb.Narrow,
             mb.Identity,
             cnn.MaxPool2d,
-            # TODO cryptenify
             ZeroPad2d,
-            # TODO cryptenify
             cnn.Sigmoid,
         ]
-        #if (not getattr(self, 'ignore_model_profiling', False) and
-        #        self.n_macs == 0 and t not in ignore_zeros_t):
-        #    if udist.is_master():
-        #        logging.info('WARNING: leaf module {} has zero n_macs.'.format(
-        #            type(self)))
+        if (not getattr(self, 'ignore_model_profiling', False) and
+               self.n_macs == 0 and t not in ignore_zeros_t):
+           if udist.is_master():
+               logging.info('WARNING: leaf module {} has zero n_macs.'.format(
+                   type(self)))
         return
     if verbose:
         if udist.is_master():
             logging.info(
                 self.name.ljust(name_space, ' ') +
-                #'{:,}'.format(self.n_params).rjust(params_space, ' ') +
-                #'{:,}'.format(self.n_macs).rjust(macs_space, ' ') +
+                '{:,}'.format(self.n_params).rjust(params_space, ' ') +
+                '{:,}'.format(self.n_macs).rjust(macs_space, ' ') +
                 '{:,}'.format(self.n_seconds).rjust(seconds_space, ' '))
     return
 
@@ -377,8 +374,8 @@ def model_profiling(model,
     model.apply(lambda m: add_profiling_hooks(m, num_forwards, verbose=verbose))
     if verbose:
         logging.info('Item'.ljust(name_space, ' ') +
-                    # 'params'.rjust(macs_space, ' ') +
-                    # 'macs'.rjust(macs_space, ' ') +
+                     'params'.rjust(macs_space, ' ') +
+                     'macs'.rjust(macs_space, ' ') +
                      'nanosecs'.rjust(seconds_space, ' '))
         logging.info(''.center(
             name_space + params_space + macs_space + seconds_space, '-'))
@@ -389,9 +386,9 @@ def model_profiling(model,
         logging.info(''.center(
             name_space + seconds_space, '-')) #name_space + params_space + macs_space + seconds_space, '-'))
         logging.info('Total'.ljust(name_space, ' ') +
-                    # '{:,}'.format(model.n_params).rjust(params_space, ' ') +
-                    # '{:,}'.format(model.n_macs).rjust(macs_space, ' ') +
+                     '{:,}'.format(model.n_params).rjust(params_space, ' ') +
+                     '{:,}'.format(model.n_macs).rjust(macs_space, ' ') +
                      '{:,}'.format(model.n_seconds).rjust(seconds_space, ' '))
     remove_profiling_hooks()
     model = model.to(origin_device)
-    return model.n_seconds#model.n_macs, model.n_params
+    return model.n_seconds, model.n_macs, model.n_params

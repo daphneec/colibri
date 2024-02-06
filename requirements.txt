@@ -18,3 +18,7 @@ cityscapesscripts
 pyarrow
 mmcv-full
 crypten
+
+pycocotools
+json_tricks
+nms

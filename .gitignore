@@ -4,5 +4,10 @@ venv
 data/cityscapes
 data/fake
 data/imagenet_lmdb
-utils/.DS_Store
-.DS_Store
+
+miniconda_py311
+miniconda_py311_installer.sh
+log*.out
+*.local
+
+tests/test_secure_profilling.py
