@@ -11,5 +11,3 @@ log*.out
 *.local
 
 tests/test_secure_profilling.py
-utils/.DS_Store
-.DS_Store
