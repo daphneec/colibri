@@ -44,11 +44,11 @@ To run the project, use the `start.sh` script to run it.
 
 It has the following arguments:
 ```
-start.sh [normal|secure] <PATH_TO_CONFIG_YAML>
+start.sh [normal|secure|insecure] <PATH_TO_CONFIG_YAML>
 ```
 
 If you want to run the framework _without_ Crypten, use the `normal` keyword to the `start.sh` script.  
-If you want to run _with_ Crypten use the `secure` keyword.
+If you want to run _with_ Crypten use the `secure` keyword. 'insecure' uses pytorch layers in the normal hr-nas but evaluates the runtime of layers using the analytical model.
 
 Then, dependening on which dataset you want to use (see below how to install them), select the appropriate configuration file in the `configs` directory. In addition to the ones normally provided by HR-NAS, there are also config files prefixed with `secure_`, which can only be used in the `secure` mode. In addition, files prefixed with `cpu_` are modified to make the framework run in a mode that doesn't require a GPU.
 
@@ -60,6 +60,11 @@ Or, to run a Crypten-modified ImageNet dataset using CPU-only modifications:
 ```bash
 ./start.sh secure configs/secure_cpu_cls_imagenet.yml
 ```
+
+Or, to run a non-Crypten version of a Coco dataset, but using the analytical model:
+'''
+.start.sh inseucre configs/keypoint_coco.yml
+'''
 
 ### Running - Cluster
 If you're running the project on a SLURM-cluster, you can make your life easier by using the provided `runit.sh` and `launch.sh` scripts.

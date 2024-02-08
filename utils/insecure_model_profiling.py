@@ -4,15 +4,11 @@ import functools
 import numpy as np
 import time
 import torch
-import crypten
-import crypten.nn as cnn
-import models.secure_mobilenet_base as mb
-import models.secure_hrnet as hr
-import models.secure_hrnet_base as hrb
-from models.secure_padding import ZeroPad2d
-from models.secure_multi_head_attention import MultiHeadAttention
-from models.secure_layernorm import LayerNorm
-import models.secure_transformer as transformer
+import torch.nn as nn
+import models.mobilenet_base as mb
+import models.hrnet as hr
+import models.hrnet_base as hrb
+import models.transformer as transformer
 from utils import distributed as udist
 from utils.config import DEVICE_MODE
 from utils.secure_profiling_prediction import *
@@ -86,7 +82,7 @@ def module_profiling(self, input, output, num_forwards, verbose):
     #     or (isinstance(self, nn.Sequential) and isinstance(self[0], hr.ParallelModule)):
     if not input:
         return
-    if isinstance(self, MultiHeadAttention) or isinstance(input[0], list) or isinstance(output, list):
+    if isinstance(self, nn.MultiheadAttention) or isinstance(input[0], list) or isinstance(output, list):
         pass
     else:
         ins = input[0].size()
@@ -96,7 +92,7 @@ def module_profiling(self, input, output, num_forwards, verbose):
         t = type(self)
         self._profiling_input_size = ins
         self._profiling_output_size = outs
-    if isinstance(self, cnn.Conv2d):
+    if isinstance(self, nn.Conv2d):
         self.n_macs = (ins[1] * outs[1] * self.kernel_size[0] *
                        self.kernel_size[1] * outs[2] * outs[3] //
                        self.groups) * outs[0]
@@ -104,7 +100,7 @@ def module_profiling(self, input, output, num_forwards, verbose):
         self.n_seconds = conv_time_cal(ins, outs, self.kernel_size) # calculated in ms
         self.name = conv_module_name_filter(self.__repr__())
         print(f"******* CONV n_seconds: {self.n_seconds} ms *******")
-        # logging.info("******* CONV n_seconds: %s *******", self.n_seconds)
+        logging.info("******* CONV n_seconds: %s *******", self.n_seconds)
     # TODO cryptenify
     # elif isinstance(self, nn.ConvTranspose2d):
     #     self.n_macs = (ins[1] * outs[1] * self.kernel_size[0] *
@@ -113,36 +109,33 @@ def module_profiling(self, input, output, num_forwards, verbose):
     #     self.n_params = get_params(self)
     #     self.n_seconds = 1
     #     self.name = conv_module_name_filter(self.__repr__())
-    elif isinstance(self, cnn.Linear):
-        # self.n_macs = ins[1] * outs[1] * outs[0]
-        # self.n_params = get_params(self)
+    elif isinstance(self, nn.Linear):
+        self.n_macs = ins[1] * outs[1] * outs[0]
+        self.n_params = get_params(self)
 
         self.n_seconds = linear_time_cal(ins, outs)
         self.name = self.__repr__()
         print(f"******* Linear n_seconds: {self.n_seconds} ms *******")
-    elif isinstance(self, cnn.ReLU):
-        # self.n_macs = ins[1] * outs[1] * outs[0]
-        # self.n_params = get_params(self)
-        
+    elif isinstance(self, nn.ReLU):
+        self.n_macs = ins[1] * outs[1] * outs[0]
+        self.n_params = get_params(self)
         self.n_seconds = relu_time_cal(ins, outs)
         self.name = self.__repr__()
         print(f"******* ReLU n_seconds: {self.n_seconds} ms *******")
-    elif isinstance(self, cnn.BatchNorm2d):
-        # self.n_macs = ins[1] * outs[1] * outs[0]
-        # self.n_params = get_params(self)
-        
+    elif isinstance(self, nn.BatchNorm2d):
+        self.n_macs = ins[1] * outs[1] * outs[0]
+        self.n_params = get_params(self)
         self.n_seconds = bn_time_cal(ins, outs)
         self.name = self.__repr__()
         print(f"******* BatchNorm2d n_seconds: {self.n_seconds} ms *******")
-    elif isinstance(self, cnn.AvgPool2d):
+    elif isinstance(self, nn.AvgPool2d):
         # NOTE: this function is correct only when stride == kernel size
-        # self.n_macs = ins[1] * ins[2] * ins[3] * ins[0]
-        # self.n_params = 0
-
+        self.n_macs = ins[1] * ins[2] * ins[3] * ins[0]
+        self.n_params = 0
         self.n_seconds = avgpool_time_cal(ins, outs, self.kernel_size)
         self.name = self.__repr__()
         print(f"******* AvgPool2d n_seconds: {self.n_seconds} ms *******")
-    elif isinstance(self, cnn.AdaptiveAvgPool2d):
+    elif isinstance(self, nn.AdaptiveAvgPool2d):
         # NOTE: this function is correct only when stride == kernel size
         self.n_macs = ins[1] * ins[2] * ins[3] * ins[0]
         self.n_params = 0
@@ -151,7 +144,6 @@ def module_profiling(self, input, output, num_forwards, verbose):
     elif isinstance(self, mb.SqueezeAndExcitation):
         self.n_macs = ins[1] * ins[2] * ins[3] * ins[0]
         self.n_params = 0
-
         self.n_seconds = 0
         add_sub(self, self.se_reduce)
         add_sub(self, self.se_expand)
@@ -159,7 +151,6 @@ def module_profiling(self, input, output, num_forwards, verbose):
     elif isinstance(self, mb.InvertedResidualChannels):
         self.n_macs = 0
         self.n_params = 0
-
         self.n_seconds = 0
         for op in self.ops:
             add_sub(self, op)
@@ -174,7 +165,6 @@ def module_profiling(self, input, output, num_forwards, verbose):
     elif isinstance(self, mb.InvertedResidualChannelsFused):
         self.n_macs = 0
         self.n_params = 0
-
         self.n_seconds = 0
         for op in self.depth_ops:
             add_sub(self, op)
@@ -238,10 +228,9 @@ def module_profiling(self, input, output, num_forwards, verbose):
         add_sub(self, self.linear2)
         self.name = self.__repr__()
     # TODO cryptenify
-    elif isinstance(self, MultiHeadAttention):
+    elif isinstance(self, nn.MultiheadAttention):
         self.n_macs = 0
         self.n_params = 0
-
         self.n_seconds = 0
         add_sub(self, self.out_proj)
         self.n_macs += 2 * input[0].shape[0] * input[1].shape[0] * input[0].shape[2] + \
@@ -269,7 +258,6 @@ def module_profiling(self, input, output, num_forwards, verbose):
     elif isinstance(self, hrb.Bottleneck):
         self.n_macs = 0
         self.n_params = 0
-
         self.n_seconds = 0
         add_sub(self, self.conv1)
         add_sub(self, self.conv2)
@@ -289,19 +277,19 @@ def module_profiling(self, input, output, num_forwards, verbose):
             self.n_seconds += 0.001#getattr(m, 'n_seconds', 0)
             num_children += 1
         ignore_zeros_t = [
-            cnn.BatchNorm2d,
-            LayerNorm,
-            cnn.Dropout2d,
-            cnn.Dropout,
-            cnn.Sequential,
-            cnn.ReLU6,
-            cnn.ReLU,
+            nn.BatchNorm2d,
+            nn.LayerNorm,
+            nn.Dropout2d,
+            nn.Dropout,
+            nn.Sequential,
+            nn.ReLU6,
+            nn.ReLU,
             mb.Swish,
             mb.Narrow,
             mb.Identity,
-            cnn.MaxPool2d,
-            ZeroPad2d,
-            cnn.Sigmoid,
+            nn.MaxPool2d,
+            nn.modules.padding.ZeroPad2d,
+            nn.modules.activation.Sigmoid,
         ]
         if (not getattr(self, 'ignore_model_profiling', False) and
                self.n_macs == 0 and t not in ignore_zeros_t):
@@ -366,7 +354,6 @@ def model_profiling(model,
     if encrypt: data = crypten.cryptensor(data)
 
     origin_device = next(model.parameters()).device
-    # TODO cryptenify?
     device = torch.device("cuda" if use_cuda else "cpu")
     model = model.to(device)
     data = data.to(device)
@@ -379,7 +366,7 @@ def model_profiling(model,
         logging.info(''.center(
             name_space + params_space + macs_space + seconds_space, '-'))
     with torch.no_grad():
-        with crypten.no_grad():
+        with torch.no_grad():
             model(data)
     if verbose:
         logging.info(''.center(
