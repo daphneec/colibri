@@ -1,7 +1,7 @@
 
 pillow==9.0.0
 pillow-simd==9.0.0.post
-
+joblib
 # torch>=1.4
 # torchvision>=0.5
 pyyaml>=3.13
@@ -22,3 +22,4 @@ crypten
 pycocotools
 json_tricks
 nms
+scikit-learn
