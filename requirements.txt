@@ -13,6 +13,8 @@ packaging
 matplotlib
 yacs
 cityscapesscripts
+joblib
+scikit-learn
 
 # pyarrow==0.17.1
 pyarrow
