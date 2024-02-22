@@ -24,7 +24,7 @@ from mmseg import seg_dataflow
 from mmseg.loss import CrossEntropyLoss, JointsMSELoss, accuracy_keypoint
 
 import models.mobilenet_base as mb
-import common as mc
+import common_try as mc
 from mmseg.validation import SegVal, keypoint_val
 
 import warnings
