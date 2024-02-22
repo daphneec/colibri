@@ -7,11 +7,12 @@
 #SBATCH --mem=240G
 #SBATCH -p all
 #SBATCH -o "%CURRENT_FOLDER%/logs_%j.out"
+#SBATCH --nodelist=ivi-cn017
 
 # GLOBALS
 NUM_NODES=1
 GPUS_PER_NODE=4
-MODE=insecure                            # Change to 'secure' for CrypTen; or "insecure" for analytical model on pytorch layers
+MODE=normal                            # Change to 'secure' for CrypTen; or "insecure" for analytical model on pytorch layers
 CONFIG_FILE=configs/cls_imagenet.yml   # Keep for insecure. Change to 'secure_....yml' for CrypTen
 export OM_NUM_THREADS=1
 

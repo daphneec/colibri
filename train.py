@@ -27,6 +27,9 @@ import models.mobilenet_base as mb
 import common as mc
 from mmseg.validation import SegVal, keypoint_val
 
+import warnings
+warnings.filterwarnings("ignore")
+
 
 def shrink_model(model_wrapper,
                  ema,

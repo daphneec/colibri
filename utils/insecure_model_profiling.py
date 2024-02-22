@@ -13,6 +13,9 @@ from utils import distributed as udist
 from utils.config import DEVICE_MODE
 from utils.secure_profiling_prediction import *
 
+import warnings
+warnings.filterwarnings("ignore")
+
 model_profiling_hooks = []
 model_profiling_speed_hooks = []
 
@@ -22,22 +25,22 @@ macs_space = 15
 seconds_space = 15
 
 
-class Timer(object):
+# class Timer(object):
 
-    def __init__(self, verbose=False):
-        self.verbose = verbose
-        self.start = None
-        self.end = None
+#     def __init__(self, verbose=False):
+#         self.verbose = verbose
+#         self.start = None
+#         self.end = None
 
-    def __enter__(self):
-        self.start = time.time()
-        return self
+#     def __enter__(self):
+#         self.start = time.time()
+#         return self
 
-    def __exit__(self, *args):
-        self.end = time.time()
-        self.time = self.end - self.start
-        if self.verbose:
-            print('Elapsed time: %f ms.' % self.time)
+#     def __exit__(self, *args):
+#         self.end = time.time()
+#         self.time = self.end - self.start
+#         if self.verbose:
+#             print('Elapsed time: %f ms.' % self.time)
 
 
 def get_params(self):
@@ -45,15 +48,15 @@ def get_params(self):
     return np.sum([np.prod(list(w.size())) for w in self.parameters()])
 
 
-def run_forward(self, input, num_forwards=10):
-    if num_forwards <= 0:
-        return 0.0
-    with Timer() as t:
-        for _ in range(num_forwards):
-            self.forward(*input)
-            if DEVICE_MODE == "gpu": torch.cuda.synchronize()
+# def run_forward(self, input, num_forwards=10):
+#     if num_forwards <= 0:
+#         return 0.0
+#     with Timer() as t:
+#         for _ in range(num_forwards):
+#             self.forward(*input)
+#             if DEVICE_MODE == "gpu": torch.cuda.synchronize()
 
-    return int(t.time * 1e9 / num_forwards)
+#     return int(t.time * 1e9 / num_forwards)
 
 
 def conv_module_name_filter(name):
@@ -77,7 +80,6 @@ def module_profiling(self, input, output, num_forwards, verbose):
         m.n_seconds += getattr(sub_op, 'n_seconds', 0)
 
     # _run_forward = functools.partial(run_forward, num_forwards=num_forwards)
-
     # if isinstance(self, (hr.ParallelModule, hr.FuseModule, hr.HeadModule)) \
     #     or (isinstance(self, nn.Sequential) and isinstance(self[0], hr.ParallelModule)):
     if not input:
@@ -99,48 +101,45 @@ def module_profiling(self, input, output, num_forwards, verbose):
         self.n_params = get_params(self)
         self.n_seconds = conv_time_cal(ins, outs, self.kernel_size) # calculated in ms
         self.name = conv_module_name_filter(self.__repr__())
-        print(f"******* CONV n_seconds: {self.n_seconds} ms *******")
-        logging.info("******* CONV n_seconds: %s *******", self.n_seconds)
-    # TODO cryptenify
-    # elif isinstance(self, nn.ConvTranspose2d):
-    #     self.n_macs = (ins[1] * outs[1] * self.kernel_size[0] *
-    #                    self.kernel_size[1] * outs[2] * outs[3] //
-    #                    self.groups) * outs[0]
-    #     self.n_params = get_params(self)
-    #     self.n_seconds = 1
-    #     self.name = conv_module_name_filter(self.__repr__())
+        
+    elif isinstance(self, nn.ConvTranspose2d):
+        self.n_macs = (ins[1] * outs[1] * self.kernel_size[0] *
+                      self.kernel_size[1] * outs[2] * outs[3] //
+                      self.groups) * outs[0]
+        self.n_params = get_params(self)
+        self.n_seconds = _run_forward(self, input)
+        self.name = conv_module_name_filter(self.__repr__())
+    
     elif isinstance(self, nn.Linear):
         self.n_macs = ins[1] * outs[1] * outs[0]
         self.n_params = get_params(self)
-
         self.n_seconds = linear_time_cal(ins, outs)
         self.name = self.__repr__()
-        print(f"******* Linear n_seconds: {self.n_seconds} ms *******")
+        
     elif isinstance(self, nn.ReLU):
         self.n_macs = ins[1] * outs[1] * outs[0]
         self.n_params = get_params(self)
         self.n_seconds = relu_time_cal(ins, outs)
         self.name = self.__repr__()
-        print(f"******* ReLU n_seconds: {self.n_seconds} ms *******")
+        
     elif isinstance(self, nn.BatchNorm2d):
         self.n_macs = ins[1] * outs[1] * outs[0]
         self.n_params = get_params(self)
         self.n_seconds = bn_time_cal(ins, outs)
         self.name = self.__repr__()
-        print(f"******* BatchNorm2d n_seconds: {self.n_seconds} ms *******")
+        
     elif isinstance(self, nn.AvgPool2d):
-        # NOTE: this function is correct only when stride == kernel size
         self.n_macs = ins[1] * ins[2] * ins[3] * ins[0]
         self.n_params = 0
         self.n_seconds = avgpool_time_cal(ins, outs, self.kernel_size)
         self.name = self.__repr__()
-        print(f"******* AvgPool2d n_seconds: {self.n_seconds} ms *******")
+        
     elif isinstance(self, nn.AdaptiveAvgPool2d):
-        # NOTE: this function is correct only when stride == kernel size
         self.n_macs = ins[1] * ins[2] * ins[3] * ins[0]
         self.n_params = 0
         self.n_seconds = 0
         self.name = self.__repr__()
+
     elif isinstance(self, mb.SqueezeAndExcitation):
         self.n_macs = ins[1] * ins[2] * ins[3] * ins[0]
         self.n_params = 0
@@ -148,10 +147,12 @@ def module_profiling(self, input, output, num_forwards, verbose):
         add_sub(self, self.se_reduce)
         add_sub(self, self.se_expand)
         self.name = self.__repr__()
+
     elif isinstance(self, mb.InvertedResidualChannels):
         self.n_macs = 0
         self.n_params = 0
         self.n_seconds = 0
+
         for op in self.ops:
             add_sub(self, op)
         add_sub(self, self.se_op)
@@ -162,6 +163,7 @@ def module_profiling(self, input, output, num_forwards, verbose):
         if self.use_transformer and self.downsampling_transformer and not self.use_res_connect:
             add_sub(self, self.transformer)
         self.name = self.__repr__()
+    
     elif isinstance(self, mb.InvertedResidualChannelsFused):
         self.n_macs = 0
         self.n_params = 0
@@ -172,23 +174,24 @@ def module_profiling(self, input, output, num_forwards, verbose):
         add_sub(self, self.project_conv)
         add_sub(self, self.se_op)
         self.name = self.__repr__()
+    
     elif isinstance(self, hr.ParallelModule):
         self.n_macs = 0
         self.n_params = 0
-
         self.n_seconds = 0
         for op in self.branches:
             add_sub(self, op)
         self.name = self.__repr__()
+
     elif isinstance(self, hr.FuseModule):
         self.n_macs = 0
         self.n_params = 0
-
         self.n_seconds = 0
         for ops in self.fuse_layers:
             for op in ops:
                 add_sub(self, op)
         self.name = self.__repr__()
+
     elif isinstance(self, hr.HeadModule):
         self.n_macs = 0
         self.n_params = 0
@@ -199,35 +202,35 @@ def module_profiling(self, input, output, num_forwards, verbose):
             add_sub(self, op)
         add_sub(self, self.final_layer)
         self.name = self.__repr__()
+
     elif isinstance(self, transformer.Transformer):
         self.n_macs = 0
         self.n_params = 0
-
         self.n_seconds = 0
         add_sub(self, self.input_proj)
         add_sub(self, self.reverse_proj)
         add_sub(self, self.encoder)
         add_sub(self, self.decoder)
         self.name = self.__repr__()
+
     elif isinstance(self, transformer.TransformerEncoderLayer):
         self.n_macs = 0
         self.n_params = 0
-
         self.n_seconds = 0
         add_sub(self, self.self_attn)
         add_sub(self, self.linear1)
         add_sub(self, self.linear2)
         self.name = self.__repr__()
+
     elif isinstance(self, transformer.TransformerDecoderLayer):
         self.n_macs = 0
         self.n_params = 0
-
         self.n_seconds = 0
         add_sub(self, self.multihead_attn)
         add_sub(self, self.linear1)
         add_sub(self, self.linear2)
         self.name = self.__repr__()
-    # TODO cryptenify
+
     elif isinstance(self, nn.MultiheadAttention):
         self.n_macs = 0
         self.n_params = 0
@@ -236,25 +239,26 @@ def module_profiling(self, input, output, num_forwards, verbose):
         self.n_macs += 2 * input[0].shape[0] * input[1].shape[0] * input[0].shape[2] + \
            4 * input[0].shape[0] * input[0].shape[2] * input[0].shape[2]
         self.name = self.__repr__()
+    
     elif isinstance(self, hrb.HighResolutionModule):
         self.n_macs = 0
         self.n_params = 0
-
         self.n_seconds = 0
         for op in self.branches:
             add_sub(self, op)
         for op in self.fuse_layers:
             add_sub(self, op)
         self.name = self.__repr__()
+        
     elif isinstance(self, hrb.BasicBlock):
         self.n_macs = 0
         self.n_params = 0
-
         self.n_seconds = 0
         add_sub(self, self.conv1)
         if self.downsample is not None:
             add_sub(self, self.downsample)
         self.name = self.__repr__()
+
     elif isinstance(self, hrb.Bottleneck):
         self.n_macs = 0
         self.n_params = 0
@@ -265,6 +269,7 @@ def module_profiling(self, input, output, num_forwards, verbose):
         if self.downsample is not None:
             add_sub(self, self.downsample)
         self.name = self.__repr__()
+        
     else:
         # This works only in depth-first travel of modules.
         self.n_macs = 0
@@ -274,7 +279,7 @@ def module_profiling(self, input, output, num_forwards, verbose):
         for m in self.children():
             self.n_macs += getattr(m, 'n_macs', 0)
             self.n_params += getattr(m, 'n_params', 0)
-            self.n_seconds += 0.001#getattr(m, 'n_seconds', 0)
+            self.n_seconds += getattr(m, 'n_seconds', 0)
             num_children += 1
         ignore_zeros_t = [
             nn.BatchNorm2d,
@@ -366,8 +371,7 @@ def model_profiling(model,
         logging.info(''.center(
             name_space + params_space + macs_space + seconds_space, '-'))
     with torch.no_grad():
-        with torch.no_grad():
-            model(data)
+        model(data)
     if verbose:
         logging.info(''.center(
             name_space + seconds_space, '-')) #name_space + params_space + macs_space + seconds_space, '-'))

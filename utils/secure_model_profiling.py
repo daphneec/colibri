@@ -17,6 +17,9 @@ from utils import distributed as udist
 from utils.config import DEVICE_MODE
 from utils.secure_profiling_prediction import *
 
+import warnings
+warnings.filterwarnings("ignore") 
+
 model_profiling_hooks = []
 model_profiling_speed_hooks = []
 
@@ -103,7 +106,7 @@ def module_profiling(self, input, output, num_forwards, verbose):
         self.n_params = get_params(self)
         self.n_seconds = conv_time_cal(ins, outs, self.kernel_size) # calculated in ms
         self.name = conv_module_name_filter(self.__repr__())
-        print(f"******* CONV n_seconds: {self.n_seconds} ms *******")
+        
         # logging.info("******* CONV n_seconds: %s *******", self.n_seconds)
     # TODO cryptenify
     # elif isinstance(self, nn.ConvTranspose2d):
@@ -119,21 +122,21 @@ def module_profiling(self, input, output, num_forwards, verbose):
 
         self.n_seconds = linear_time_cal(ins, outs)
         self.name = self.__repr__()
-        print(f"******* Linear n_seconds: {self.n_seconds} ms *******")
+        
     elif isinstance(self, cnn.ReLU):
         # self.n_macs = ins[1] * outs[1] * outs[0]
         # self.n_params = get_params(self)
         
         self.n_seconds = relu_time_cal(ins, outs)
         self.name = self.__repr__()
-        print(f"******* ReLU n_seconds: {self.n_seconds} ms *******")
+        
     elif isinstance(self, cnn.BatchNorm2d):
         # self.n_macs = ins[1] * outs[1] * outs[0]
         # self.n_params = get_params(self)
         
         self.n_seconds = bn_time_cal(ins, outs)
         self.name = self.__repr__()
-        print(f"******* BatchNorm2d n_seconds: {self.n_seconds} ms *******")
+        
     elif isinstance(self, cnn.AvgPool2d):
         # NOTE: this function is correct only when stride == kernel size
         # self.n_macs = ins[1] * ins[2] * ins[3] * ins[0]
@@ -141,7 +144,7 @@ def module_profiling(self, input, output, num_forwards, verbose):
 
         self.n_seconds = avgpool_time_cal(ins, outs, self.kernel_size)
         self.name = self.__repr__()
-        print(f"******* AvgPool2d n_seconds: {self.n_seconds} ms *******")
+        
     elif isinstance(self, cnn.AdaptiveAvgPool2d):
         # NOTE: this function is correct only when stride == kernel size
         self.n_macs = ins[1] * ins[2] * ins[3] * ins[0]
