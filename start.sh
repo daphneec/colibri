@@ -9,7 +9,7 @@
 #   Yes
 #
 # Description:
-#   Script for starting the project in either 'normal' or 'secure' mode.
+#   Script for starting the project in either 'normal' or 'secure' or 'insecure' mode.
 #
 
 
@@ -64,11 +64,12 @@ while [[ "$i" -lt "${#args[@]}" ]]; do
                 parsing_arg="gpus"
                 state="arg"
             elif [[ "$arg" == "-h" || "$arg" == "--help" ]]; then
-	        echo "Usage: $0 [OPTS] <normal|secure> <CONFIG_PATH>"
+	        echo "Usage: $0 [OPTS] <normal|secure|insecure> <CONFIG_PATH>"
                 echo ""
                 echo "Arguments:"
-                echo "  - <normal|secure>  Which mode to enable. Use 'normal' to run the (almost) vanilla HR-NAS,"
-                echo "                     or 'secure' to run the CrypTen version."
+                echo "  - <normal|secure|insecure>"
+                echo "                     Which mode to enable. Use 'normal' to run the (almost) vanilla HR-NAS,"
+                echo "                     or 'secure' to run the CrypTen version, or 'insecure' for a non-crypten version that uses the analytical model"
                 echo "  - <CONFIG_PATH>    The path to the config file denoting which model to use. See 'README.md'"
                 echo "                     for more information."
                 echo ""
@@ -140,7 +141,7 @@ while [[ "$i" -lt "${#args[@]}" ]]; do
     fi
 done
 if [[ -z "$mode" ]]; then
-    2>&1 echo "Missing mandatory positional argument '<normal|secure>'"
+    2>&1 echo "Missing mandatory positional argument '<normal|secure|insecure>'"
     errored=1
 fi
 if [[ -z "$path" ]]; then
@@ -167,6 +168,11 @@ fi
 exec="train.py"
 if [[ "$mode" == "secure" ]]; then
     exec="secure_train.py"
+elif [[ "$mode" == "insecure" ]]; then
+    exec="insecure_train.py"
+elif [[ "$mode" != "normal" ]]; then
+    2>&1 echo "Unknown run mode '$mode'"
+    exit 1
 fi
 
 # Patch the path to allow the user to use relative paths that make sense for them but not in the (possibly different) script directory
