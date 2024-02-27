@@ -2,12 +2,12 @@
 
 #SBATCH -N 1
 #SBATCH --gres=gpu:pascal:4
-#SBATCH --cpus-per-task=10
+#SBATCH --cpus-per-task=40
 #SBATCH -t 150:00:00
-#SBATCH --mem=240G
+#SBATCH --mem=260G
 #SBATCH -p all
 #SBATCH -o "%CURRENT_FOLDER%/logs_%j.out"
-#SBATCH --nodelist=ivi-cn017
+#SBATCH --nodelist=ivi-cn0
 
 # GLOBALS
 NUM_NODES=1

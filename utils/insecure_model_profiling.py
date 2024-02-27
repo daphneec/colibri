@@ -99,7 +99,7 @@ def module_profiling(self, input, output, num_forwards, verbose):
                        self.kernel_size[1] * outs[2] * outs[3] //
                        self.groups) * outs[0]
         self.n_params = get_params(self)
-        self.n_seconds = conv_time_cal(ins, outs, self.kernel_size) # calculated in ms
+        self.n_seconds = conv_time_cal(ins, outs, self.kernel_size) # calculated in ms 
         self.name = conv_module_name_filter(self.__repr__())
         
     elif isinstance(self, nn.ConvTranspose2d):
@@ -107,31 +107,31 @@ def module_profiling(self, input, output, num_forwards, verbose):
                       self.kernel_size[1] * outs[2] * outs[3] //
                       self.groups) * outs[0]
         self.n_params = get_params(self)
-        self.n_seconds = _run_forward(self, input)
+        self.n_seconds = conv_time_cal(ins, outs, self.kernel_size) # calculated in ms 
         self.name = conv_module_name_filter(self.__repr__())
     
     elif isinstance(self, nn.Linear):
         self.n_macs = ins[1] * outs[1] * outs[0]
         self.n_params = get_params(self)
-        self.n_seconds = linear_time_cal(ins, outs)
+        self.n_seconds = linear_time_cal(ins, outs) # calculated in ms 
         self.name = self.__repr__()
         
     elif isinstance(self, nn.ReLU):
         self.n_macs = ins[1] * outs[1] * outs[0]
         self.n_params = get_params(self)
-        self.n_seconds = relu_time_cal(ins, outs)
+        self.n_seconds = relu_time_cal(ins, outs) # calculated in ms 
         self.name = self.__repr__()
         
     elif isinstance(self, nn.BatchNorm2d):
         self.n_macs = ins[1] * outs[1] * outs[0]
         self.n_params = get_params(self)
-        self.n_seconds = bn_time_cal(ins, outs)
+        self.n_seconds = bn_time_cal(ins, outs) # calculated in ms 
         self.name = self.__repr__()
         
     elif isinstance(self, nn.AvgPool2d):
         self.n_macs = ins[1] * ins[2] * ins[3] * ins[0]
         self.n_params = 0
-        self.n_seconds = avgpool_time_cal(ins, outs, self.kernel_size)
+        self.n_seconds = avgpool_time_cal(ins, outs, self.kernel_size) # calculated in ms 
         self.name = self.__repr__()
         
     elif isinstance(self, nn.AdaptiveAvgPool2d):
