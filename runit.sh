@@ -1,5 +1,8 @@
 #!/bin/bash
 
+#Activate modules
+module load cuda12.3/toolkit
+
 # Prepare a local script
 local_launch="$(pwd)/launch.sh.local"
 # Copy/paste the file
