@@ -245,15 +245,12 @@ def get_model():
             raise ValueError("Non-distributed execution is not supported in Crypten, sorry")
     else:
         if FLAGS.use_distributed:
-            if DEVICE_MODE == "cpu":
-                model_wrapper = udist.AllReduceDistributedDataParallel(model)
-            else:
-                model_wrapper = udist.AllReduceDistributedDataParallel(model.cuda())
+            with torch.no_grad():
+                with crypten.no_grad():
+                    model = model.cuda()
+            model_wrapper = udist.AllReduceDistributedDataParallel(model)
         else:
-            # if DEVICE_MODE == "cpu":
-            #     model_wrapper = torch.nn.DataParallel(model)
-            # else:
-            #     model_wrapper = torch.nn.DataParallel(model).cuda()
+            # model_wrapper = torch.nn.DataParallel(model).cuda()
             raise ValueError("Non-distributed execution is not supported in Crypten, sorry")
     return model, model_wrapper
 
