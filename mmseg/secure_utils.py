@@ -78,10 +78,10 @@ def mean_iou(results, gt_seg_maps, num_classes, ignore_index):
 
     num_imgs = len(results)
     assert len(gt_seg_maps) == num_imgs
-    total_area_intersect = np.zeros((num_classes, ), dtype=np.float)
-    total_area_union = np.zeros((num_classes, ), dtype=np.float)
-    total_area_pred_label = np.zeros((num_classes, ), dtype=np.float)
-    total_area_label = np.zeros((num_classes, ), dtype=np.float)
+    total_area_intersect = np.zeros((num_classes, ), dtype=np.float32)
+    total_area_union = np.zeros((num_classes, ), dtype=np.float32)
+    total_area_pred_label = np.zeros((num_classes, ), dtype=np.float32)
+    total_area_label = np.zeros((num_classes, ), dtype=np.float32)
     for i in range(num_imgs):
         area_intersect, area_union, area_pred_label, area_label = \
             intersect_and_union(results[i], gt_seg_maps[i], num_classes,
