@@ -117,30 +117,30 @@ def module_profiling(self, input, output, num_forwards, verbose):
     #     self.n_seconds = 1
     #     self.name = conv_module_name_filter(self.__repr__())
     elif isinstance(self, cnn.Linear):
-        # self.n_macs = ins[1] * outs[1] * outs[0]
-        # self.n_params = get_params(self)
+        self.n_macs = ins[1] * outs[1] * outs[0]
+        self.n_params = get_params(self)
 
         self.n_seconds = linear_time_cal(ins, outs)
         self.name = self.__repr__()
         
     elif isinstance(self, cnn.ReLU):
-        # self.n_macs = ins[1] * outs[1] * outs[0]
-        # self.n_params = get_params(self)
+        self.n_macs = ins[1] * outs[1] * outs[0]
+        self.n_params = get_params(self)
         
         self.n_seconds = relu_time_cal(ins, outs)
         self.name = self.__repr__()
         
     elif isinstance(self, cnn.BatchNorm2d):
-        # self.n_macs = ins[1] * outs[1] * outs[0]
-        # self.n_params = get_params(self)
+        self.n_macs = ins[1] * outs[1] * outs[0]
+        self.n_params = get_params(self)
         
         self.n_seconds = bn_time_cal(ins, outs)
         self.name = self.__repr__()
         
     elif isinstance(self, cnn.AvgPool2d):
         # NOTE: this function is correct only when stride == kernel size
-        # self.n_macs = ins[1] * ins[2] * ins[3] * ins[0]
-        # self.n_params = 0
+        self.n_macs = ins[1] * ins[2] * ins[3] * ins[0]
+        self.n_params = 0
 
         self.n_seconds = avgpool_time_cal(ins, outs, self.kernel_size)
         self.name = self.__repr__()

@@ -9,42 +9,42 @@ import models.mobilenet_base as mb
 from utils import distributed as udist
 
 
-class PruneInfoTransformer(object):
-    """Information for resource-aware atomic block selection."""
+# class PruneInfoTransformer(object):
+#     """Information for resource-aware atomic block selection."""
 
-    def __init__(self, names, penalties, norm_factor=None):
-        """Init property for weights to be selected."""
-        assert len(names) == len(penalties)
-        self.norm_factor = norm_factor
-        self._info = collections.OrderedDict((k, {
-            'compress_masked': False,
-            'penalty': v
-        }) for k, v in zip(names, penalties))
+#     def __init__(self, names, penalties, norm_factor=None):
+#         """Init property for weights to be selected."""
+#         assert len(names) == len(penalties)
+#         self.norm_factor = norm_factor
+#         self._info = collections.OrderedDict((k, {
+#             'compress_masked': False,
+#             'penalty': v
+#         }) for k, v in zip(names, penalties))
 
-    def add_info_list(self, name, values):
-        """Add related property."""
-        assert len(values) == len(self.weight)
-        for k, v in zip(self.weight, values):
-            self._info[k][name] = v
+#     def add_info_list(self, name, values):
+#         """Add related property."""
+#         assert len(values) == len(self.weight)
+#         for k, v in zip(self.weight, values):
+#             self._info[k][name] = v
 
-    def get_info_list(self, name):
-        """Get property by name."""
-        return [v[name] for v in self._info.values()]
+#     def get_info_list(self, name):
+#         """Get property by name."""
+#         return [v[name] for v in self._info.values()]
 
-    def update_penalty(self):
-        for item in self._info.values():
-            avg_flop = (item['flops'] - 2 * (item['initial_channels'] ** 2) * 64) / item['initial_channels']
-            uniq_flop = 2 * (item['channels'] ** 2 - max(item['channels'] - 1, 0) ** 2) * 64
-            item['penalty'] = (avg_flop + uniq_flop) / self.norm_factor
+#     def update_penalty(self):
+#         for item in self._info.values():
+#             avg_flop = (item['flops'] - 2 * (item['initial_channels'] ** 2) * 64) / item['initial_channels']
+#             uniq_flop = 2 * (item['channels'] ** 2 - max(item['channels'] - 1, 0) ** 2) * 64
+#             item['penalty'] = (avg_flop + uniq_flop) / self.norm_factor
 
 
-    @property
-    def weight(self):
-        return list(self._info.keys())
+#     @property
+#     def weight(self):
+#         return list(self._info.keys())
 
-    @property
-    def penalty(self):
-        return self.get_info_list('penalty')
+#     @property
+#     def penalty(self):
+#         return self.get_info_list('penalty')
 
 
 class PruneInfo(object):
@@ -147,39 +147,44 @@ def get_bn_to_prune(model, flags, verbose=True):
         penalties_transformer = []
         flops_transformer = []
         channels_transformer = []
-        for name, m in model.get_named_block_list().items():
+        for block, (name, m) in enumerate(model.get_named_block_list().items()):
             if isinstance(m, mb.InvertedResidualChannels):
                 # only the first block could be non expand
                 if bn_prune_filter == 'expansion_only_skip_expand1' and not m.expand:
                     continue
 
-                for op, (bn_name, bn) in zip(
+                for i, (op, (bn_name, bn)) in enumerate(zip(
                         m.ops,
-                        m.get_named_depthwise_bn(prefix=name).items()):
+                        m.get_named_depthwise_bn(prefix=name).items())):
                     hidden_channel = bn.weight.numel()
                     # print(hidden_channel)
+                    # CHANGE: Now using seconds instead of macs
                     penalties.append(
-                        (hidden_channel, op.n_macs / hidden_channel))
+                        (hidden_channel, op.n_seconds / hidden_channel))
                     weights.append('{}.weight'.format(bn_name))
                 if (m.use_transformer and m.use_res_connect) or \
                         (m.use_transformer and m.downsampling_transformer and not m.use_res_connect):
-                    op = m.transformer
-                    bn = m.transformer.input_norm
-                    bn_name = name + '.transformer.input_norm'
-                    hidden_channel = bn.weight.numel()
-                    penalties_transformer.append(
-                        (hidden_channel, op.n_macs / hidden_channel))
-                    weights_transformer.append('{}.weight'.format(bn_name))
-                    flops_transformer.append(op.n_macs)
-                    channels_transformer.append(hidden_channel)
-        per_channel_flops = [val[1] for val in penalties]
+                    # op = m.transformer
+                    # bn = m.transformer.input_norm
+                    # bn_name = name + '.transformer.input_norm'
+                    # hidden_channel = bn.weight.numel()
+                    # penalties_transformer.append(
+                    #     (hidden_channel, op.n_macs / hidden_channel))
+                    # weights_transformer.append('{}.weight'.format(bn_name))
+                    # flops_transformer.append(op.n_macs)
+                    # channels_transformer.append(hidden_channel)
+                    raise NotImplementedError()
+
+        # CHANGE: Name change to reflect seconds
+        per_channel_nsecs = [val[1] for val in penalties]
         numel_total = sum(val[0] for val in penalties)
         if flags.use_transformer == True:
-            per_channel_flops_transformer = [val[1] for val in penalties_transformer]
-            numel_total_transformer = sum(val[0] for val in penalties_transformer)
-            penalty_normalizer = sum([numel * val for numel, val in penalties + penalties_transformer
-                                      ]) / (numel_total + numel_total_transformer + 1e-5)
-            penalties_transformer = [val / penalty_normalizer for (_, val) in penalties_transformer]
+            # per_channel_flops_transformer = [val[1] for val in penalties_transformer]
+            # numel_total_transformer = sum(val[0] for val in penalties_transformer)
+            # penalty_normalizer = sum([numel * val for numel, val in penalties + penalties_transformer
+            #                           ]) / (numel_total + numel_total_transformer + 1e-5)
+            # penalties_transformer = [val / penalty_normalizer for (_, val) in penalties_transformer]
+            raise NotImplementedError()
         else:
             penalty_normalizer = sum([numel * val for numel, val in penalties
                                       ]) / (numel_total + 1e-5)
@@ -188,7 +193,8 @@ def get_bn_to_prune(model, flags, verbose=True):
         # baseline for table 2, network slimming like
         weights = []
         penalties = []
-        per_channel_flops = []
+        # CHANGE: Name change to reflect seconds
+        per_channel_nsecs = []
         for name, m in model.get_named_block_list().items():
             if isinstance(m, mb.InvertedResidualChannels):
                 if bn_prune_filter == 'equal_penalty_skip_expand1' and not m.expand:
@@ -200,16 +206,20 @@ def get_bn_to_prune(model, flags, verbose=True):
                     hidden_channel = bn.weight.numel()
                     weights.append('{}.weight'.format(bn_name))
                     penalties.append(1)
-                    per_channel_flops.append(op.n_macs / hidden_channel)
+                    # CHANGE: Now using seconds instead of macs
+                    per_channel_nsecs.append(op.n_seconds / hidden_channel)
     elif bn_prune_filter is None:
         # do nothing
         weights, penalties = [], []
-        per_channel_flops = []
+        # CHANGE: Name change to reflect seconds
+        per_channel_nsecs = []
     else:
         raise NotImplementedError()
 
     prune_info = PruneInfo(weights, penalties)
-    prune_info.add_info_list('per_channel_flops', per_channel_flops)
+    # CHANGE: Changed name to be reflective of time
+    # prune_info.add_info_list('per_channel_flops', per_channel_flops)
+    prune_info.add_info_list('per_channel_nsecs', per_channel_nsecs)
 
     if verbose and udist.is_master():
         for name, penal in zip(prune_info.weight, prune_info.penalty):
@@ -220,22 +230,23 @@ def get_bn_to_prune(model, flags, verbose=True):
         assert name_weight in all_params_keys
 
     if flags.use_transformer:
-        prune_info_transformer = PruneInfoTransformer(weights_transformer,
-                                                      penalties_transformer,
-                                                      penalty_normalizer)
-        prune_info_transformer.add_info_list('per_channel_flops', per_channel_flops_transformer)
-        prune_info_transformer.add_info_list('flops', flops_transformer)
-        prune_info_transformer.add_info_list('channels', channels_transformer)
-        prune_info_transformer.add_info_list('initial_channels', channels_transformer)
-        prune_info_transformer.update_penalty()
-        if verbose and udist.is_master():
-            for name, penal in zip(prune_info_transformer.weight, prune_info_transformer.penalty):
-                logging.info('{} penalty: {}'.format(name, penal))
+        # prune_info_transformer = PruneInfoTransformer(weights_transformer,
+        #                                               penalties_transformer,
+        #                                               penalty_normalizer)
+        # prune_info_transformer.add_info_list('per_channel_flops', per_channel_flops_transformer)
+        # prune_info_transformer.add_info_list('flops', flops_transformer)
+        # prune_info_transformer.add_info_list('channels', channels_transformer)
+        # prune_info_transformer.add_info_list('initial_channels', channels_transformer)
+        # prune_info_transformer.update_penalty()
+        # if verbose and udist.is_master():
+        #     for name, penal in zip(prune_info_transformer.weight, prune_info_transformer.penalty):
+        #         logging.info('{} penalty: {}'.format(name, penal))
 
-        all_params_keys_transformer = [key for key, val in model.named_parameters()]
-        for name_weight in prune_info_transformer.weight:
-            assert name_weight in all_params_keys_transformer
-        return prune_info, prune_info_transformer
+        # all_params_keys_transformer = [key for key, val in model.named_parameters()]
+        # for name_weight in prune_info_transformer.weight:
+        #     assert name_weight in all_params_keys_transformer
+        # return prune_info, prune_info_transformer
+        raise NotImplementedError()
     return prune_info
 
 
@@ -286,16 +297,17 @@ def cal_pruned_flops(prune_info):
     """Calculate total FLOPS for dead atomic blocks."""
     info = []
     pruned_flops = 0
-    for name, per_channel_flops, mask in zip(
-            prune_info.weight, prune_info.get_info_list('per_channel_flops'),
+    # CHANGE: Changing the channels into seconds name change and everything
+    for name, per_channel_nsecs, mask in zip(
+            prune_info.weight, prune_info.get_info_list('per_channel_nsecs'),
             prune_info.get_info_list('mask')):
         num_pruned = (~mask.detach()).sum().item()
         num_total = mask.numel()
         info.append([
-            name, num_total, num_pruned, num_total * per_channel_flops,
-            num_pruned * per_channel_flops, num_pruned / num_total
+            name, num_total, num_pruned, num_total * per_channel_nsecs,
+            num_pruned * per_channel_nsecs, num_pruned / num_total
         ])
-        pruned_flops += num_pruned * per_channel_flops
+        pruned_flops += num_pruned * per_channel_nsecs
     return pruned_flops, info
 
 

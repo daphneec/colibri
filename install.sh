@@ -26,6 +26,9 @@ for arg in $@; do
         elif [[ "$arg" == "-c11" || "$arg" == "--cuda11" ]]; then
             # Mark that we're using CUDA 11 mode instead
             cuda_to_install=11
+        elif [[ "$arg" == "-ng" || "$arg" == "--no-gpu" ]]; then
+            # Enter CPU mode
+            cuda_to_install=
         elif [[ "$arg" == "-h" || "$arg" == "--help" ]]; then
             # Show the help thing
             echo "Usage: $0 [<OPTS>] [<DISTRO>]"
@@ -36,7 +39,8 @@ for arg in $@; do
             echo "Options:"
             echo "  -i,--ivi       Enables some environment variables necessary on the IvI cluster."
             echo "  -c,--clean     Runs the 'clean.sh' script before installing new things."
-            echo "  -c11,--cuda11  Installs CUDA toolkit version 11.4 instead of the latest."
+            echo "  -c11,--cuda11  Installs CUDA toolkit version 11.8 instead of the latest."
+            echo "  -ng,--no-gpu   Does not install a CUDA toolkit at all. Overrides '--cuda11'."
             echo "  -h,--help      Shows this help menu, then exits."
             echo ""
             exit 0
@@ -110,9 +114,12 @@ fi
 
 echo "[install.sh] Installing torch & torchvision using conda..."
 if [[ "$ivi" -eq 1 ]]; then source /opt/rh/devtoolset-10/enable; fi
-toolkitver=
-if [[ "$cuda_to_install" -eq 11 ]]; then toolkitver='=11.8'; fi
-conda install -y pytorch torchvision torchaudio "pytorch-cuda$toolkitver" -c pytorch -c nvidia || exit $?
+cuda_dep="pytorch-cuda"
+nvidia_flag="-c"
+nvidia_channel="nvidia"
+if [[ "$cuda_to_install" -eq 11 ]]; then cuda_dep='pytorch-cuda=11.8'; fi
+if [[ -z "$cuda_to_install" ]]; then cuda_dep=; nvidia_flag=; nvidia_channel=; fi
+bash -c "conda install -y pytorch torchvision torchaudio $cuda_dep -c pytorch $nvidia_flag $nvidia_channel" || exit $?
 
 echo "[install.sh] Installing dependencies in requirements.txt..."
 bash -c "SKLEARN_ALLOW_DEPRECATED_SKLEARN_PACKAGE_INSTALL=True python3 -m pip install -r ./requirements.txt" || exit "$?"

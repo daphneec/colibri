@@ -19,7 +19,7 @@ from utils.common import bn_calibration
 from utils import dataflow
 from utils import optim
 from utils import distributed as udist
-from utils import prune
+from utils import insecure_prune as iprune
 from mmseg import seg_dataflow
 from mmseg.loss import CrossEntropyLoss, JointsMSELoss, accuracy_keypoint
 
@@ -124,7 +124,7 @@ def log_pruned_info(model, flops_pruned, infos, prune_threshold):
                 'prune_ratio/{}/{}'.format(prune_threshold, info[0]), info[-1],
                 FLAGS._global_step)
         logging.info('Pruned model: {}'.format(
-            prune.output_searched_network(model, infos, FLAGS.prune_params)))
+            iprune.output_searched_network(model, infos, FLAGS.prune_params)))
 
     #flops_remain = #model.n_macs - flops_pruned
     if udist.is_master():
@@ -217,12 +217,12 @@ def run_one_epoch(epoch,
             if FLAGS.prune_params['method'] is not None:
                 loss_l2 = optim.cal_l2_loss(model, FLAGS.weight_decay,
                                             FLAGS.weight_decay_method)  # manual weight decay
-                loss_bn_l1 = prune.cal_bn_l1_loss(get_prune_weights(model),
+                loss_bn_l1 = iprune.cal_bn_l1_loss(get_prune_weights(model),
                                                   FLAGS._bn_to_prune.penalty, rho)
                 if FLAGS.prune_params.use_transformer:
 
                     transformer_weights = get_prune_weights(model, True)
-                    loss_bn_l1 += prune.cal_bn_l1_loss(transformer_weights,
+                    loss_bn_l1 += iprune.cal_bn_l1_loss(transformer_weights,
                                                        FLAGS._bn_to_prune_transformer.penalty, rho)
 
                     transformer_dict = []
@@ -477,10 +477,10 @@ def train_val_test():
 
     # get bn's weights
     if FLAGS.prune_params.use_transformer:
-        FLAGS._bn_to_prune, FLAGS._bn_to_prune_transformer = prune.get_bn_to_prune(model, FLAGS.prune_params)
+        FLAGS._bn_to_prune, FLAGS._bn_to_prune_transformer = iprune.get_bn_to_prune(model, FLAGS.prune_params)
     else:
-        FLAGS._bn_to_prune = prune.get_bn_to_prune(model, FLAGS.prune_params)
-    rho_scheduler = prune.get_rho_scheduler(FLAGS.prune_params,
+        FLAGS._bn_to_prune = iprune.get_bn_to_prune(model, FLAGS.prune_params)
+    rho_scheduler = iprune.get_rho_scheduler(FLAGS.prune_params,
                                             FLAGS._steps_per_epoch)
 
     if FLAGS.test_only and (test_loader is not None):
@@ -518,10 +518,10 @@ def train_val_test():
 
             if FLAGS.prune_params['method'] is not None and FLAGS.prune_params['bn_prune_filter'] is not None:
                 prune_threshold = FLAGS.model_shrink_threshold  # 1e-3
-                masks = prune.cal_mask_network_slimming_by_threshold(
+                masks = iprune.cal_mask_network_slimming_by_threshold(
                     get_prune_weights(model_eval_wrapper), prune_threshold)  # get mask for all bn weights (depth-wise)
                 FLAGS._bn_to_prune.add_info_list('mask', masks)
-                flops_pruned, infos = prune.cal_pruned_flops(FLAGS._bn_to_prune)
+                flops_pruned, infos = iprune.cal_pruned_flops(FLAGS._bn_to_prune)
                 log_pruned_info(mc.unwrap_model(model_eval_wrapper), flops_pruned,
                                 infos, prune_threshold)
                 if not FLAGS.distill:

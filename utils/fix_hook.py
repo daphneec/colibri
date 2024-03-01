@@ -4,7 +4,7 @@
 # Created:
 #   09 Nov 2023, 10:41:00
 # Last edited:
-#   25 Jan 2024, 14:02:10
+#   12 Feb 2024, 13:24:33
 # Auto updated?
 #   Yes
 #
@@ -23,6 +23,8 @@ import torch.nn.functional as F
 
 # Get some debug stuff
 DEBUG = "DEBUG" in os.environ and (os.environ["DEBUG"] == "true" or os.environ["DEBUG"] == "1")
+# if DEBUG:
+#     import pdb
 
 
 ##### LIBRARY #####
@@ -235,6 +237,35 @@ def fix_debug():
         Used in addition to other fixers to inject debug functions/whatnot in various parts of the API.
     """
 
+    # class GradFnWrapper:
+    #     pass
+
+
+    # # Build a wrapper around the grad_fn that logs everything it does
+    # print("DEBUG: utils.fix_hook.fix_debug(): Injecting 'torch.Tensor.grad_fn'")
+    # if isinstance(torch.Tensor.grad_fn, GradFnWrapper):
+    #     print("DEBUG: utils.fix_hook.fix_crypten(): Not injecting `torch.Tensor.grad_fn` as it has already been wrapped")
+    # else:
+    #     # Dynamically build the object as a copy
+    #     grad_fn = GradFnWrapper()
+    #     for func in torch.Tensor.grad_fn.__dir__():
+    #         # Skip some
+    #         if func in [ "__class__" ]: continue
+
+    #         # Define the wrapper function
+    #         def wrapper(name, func):
+    #             def wrapper_inner(self, *args, **kwargs):
+    #                 print(f"Called grad_fn.{name}")
+    #                 func(self.grad_fn, *args, **kwargs)
+    #             return wrapper_inner
+
+    #         # Wrap it
+    #         print(f"DEBUG: utils.fix_hook.fix_debug(): Wrapping 'torch.Tensor.grad_fn.{func}'")
+    #         setattr(grad_fn, func, wrapper(func, getattr(torch.Tensor.grad_fn, func)))
+
+    #     # Override the wrapper in the thing
+    #     grad_fn.grad_fn = torch.Tensor.grad_fn
+    #     torch.Tensor.grad_fn = grad_fn
     ...
 
 def fix_deps():
@@ -257,6 +288,10 @@ def fix_deps():
 
     # Also fix torch lel
     fix_torch_tensor()
+
+    # And do DEBUG stuff
+    if DEBUG:
+        fix_debug()
 
 def fix_crypten():
     """
