@@ -91,8 +91,8 @@ prune_params: {
 use_distributed: True
 allreduce_bn: False
 
-model_shrink_threshold: 1.0e-3
-model_shrink_delta_flops: 1.0e+6
+model_shrink_threshold: 5
+model_shrink_delta_flops: 1
 bn_calibration: True
 bn_calibration_steps: 10
 bn_calibration_per_gpu_batch_size: 16
