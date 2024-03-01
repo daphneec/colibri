@@ -158,8 +158,9 @@ def get_bn_to_prune(model, flags, verbose=True):
                         m.get_named_depthwise_bn(prefix=name).items())):
                     hidden_channel = bn.weight.numel()
                     # print(hidden_channel)
+                    # CHANGE: Now using seconds instead of macs
                     penalties.append(
-                        (hidden_channel, op.n_macs / hidden_channel))
+                        (hidden_channel, op.n_seconds / hidden_channel))
                     weights.append('{}.weight'.format(bn_name))
                 if (m.use_transformer and m.use_res_connect) or \
                         (m.use_transformer and m.downsampling_transformer and not m.use_res_connect):
@@ -174,7 +175,8 @@ def get_bn_to_prune(model, flags, verbose=True):
                     # channels_transformer.append(hidden_channel)
                     raise NotImplementedError()
 
-        per_channel_flops = [val[1] for val in penalties]
+        # CHANGE: Name change to reflect seconds
+        per_channel_nsecs = [val[1] for val in penalties]
         numel_total = sum(val[0] for val in penalties)
         if flags.use_transformer == True:
             # per_channel_flops_transformer = [val[1] for val in penalties_transformer]
@@ -191,7 +193,8 @@ def get_bn_to_prune(model, flags, verbose=True):
         # baseline for table 2, network slimming like
         weights = []
         penalties = []
-        per_channel_flops = []
+        # CHANGE: Name change to reflect seconds
+        per_channel_nsecs = []
         for name, m in model.get_named_block_list().items():
             if isinstance(m, mb.InvertedResidualChannels):
                 if bn_prune_filter == 'equal_penalty_skip_expand1' and not m.expand:
@@ -203,16 +206,20 @@ def get_bn_to_prune(model, flags, verbose=True):
                     hidden_channel = bn.weight.numel()
                     weights.append('{}.weight'.format(bn_name))
                     penalties.append(1)
-                    per_channel_flops.append(op.n_macs / hidden_channel)
+                    # CHANGE: Now using seconds instead of macs
+                    per_channel_nsecs.append(op.n_seconds / hidden_channel)
     elif bn_prune_filter is None:
         # do nothing
         weights, penalties = [], []
-        per_channel_flops = []
+        # CHANGE: Name change to reflect seconds
+        per_channel_nsecs = []
     else:
         raise NotImplementedError()
 
     prune_info = PruneInfo(weights, penalties)
-    prune_info.add_info_list('per_channel_flops', per_channel_flops)
+    # CHANGE: Changed name to be reflective of time
+    # prune_info.add_info_list('per_channel_flops', per_channel_flops)
+    prune_info.add_info_list('per_channel_nsecs', per_channel_nsecs)
 
     if verbose and udist.is_master():
         for name, penal in zip(prune_info.weight, prune_info.penalty):
@@ -290,16 +297,17 @@ def cal_pruned_flops(prune_info):
     """Calculate total FLOPS for dead atomic blocks."""
     info = []
     pruned_flops = 0
-    for name, per_channel_flops, mask in zip(
-            prune_info.weight, prune_info.get_info_list('per_channel_flops'),
+    # CHANGE: Changing the channels into seconds name change and everything
+    for name, per_channel_nsecs, mask in zip(
+            prune_info.weight, prune_info.get_info_list('per_channel_nsecs'),
             prune_info.get_info_list('mask')):
         num_pruned = (~mask.detach()).sum().item()
         num_total = mask.numel()
         info.append([
-            name, num_total, num_pruned, num_total * per_channel_flops,
-            num_pruned * per_channel_flops, num_pruned / num_total
+            name, num_total, num_pruned, num_total * per_channel_nsecs,
+            num_pruned * per_channel_nsecs, num_pruned / num_total
         ])
-        pruned_flops += num_pruned * per_channel_flops
+        pruned_flops += num_pruned * per_channel_nsecs
     return pruned_flops, info
 
 
