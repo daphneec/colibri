@@ -95,53 +95,73 @@ def module_profiling(self, input, output, num_forwards, verbose):
         self._profiling_input_size = ins
         self._profiling_output_size = outs
     if isinstance(self, nn.Conv2d):
+        # self.n_macs = 0
+        # self.n_params = 0
+        # self.n_seconds = 0
         self.n_macs = (ins[1] * outs[1] * self.kernel_size[0] *
                        self.kernel_size[1] * outs[2] * outs[3] //
                        self.groups) * outs[0]
         self.n_params = get_params(self)
-        self.n_seconds = conv_time_cal(ins, outs, self.kernel_size) # calculated in ms 
+        self.n_seconds = conv_time_cal(ins, outs, self.kernel_size) # calculated in ms
         self.name = conv_module_name_filter(self.__repr__())
         
     elif isinstance(self, nn.ConvTranspose2d):
-        self.n_macs = (ins[1] * outs[1] * self.kernel_size[0] *
-                      self.kernel_size[1] * outs[2] * outs[3] //
-                      self.groups) * outs[0]
-        self.n_params = get_params(self)
-        self.n_seconds = conv_time_cal(ins, outs, self.kernel_size) # calculated in ms 
+        self.n_macs = 0
+        self.n_params = 0
+        self.n_seconds = 0
+        # self.n_macs = (ins[1] * outs[1] * self.kernel_size[0] *
+        #               self.kernel_size[1] * outs[2] * outs[3] //
+        #               self.groups) * outs[0]
+        # self.n_params = get_params(self)
+        # self.n_seconds = conv_time_cal(ins, outs, self.kernel_size) #_run_forward(self, input)
         self.name = conv_module_name_filter(self.__repr__())
     
     elif isinstance(self, nn.Linear):
-        self.n_macs = ins[1] * outs[1] * outs[0]
-        self.n_params = get_params(self)
-        self.n_seconds = linear_time_cal(ins, outs) # calculated in ms 
+        self.n_macs = 0
+        self.n_params = 0
+        self.n_seconds = 0
+        # self.n_macs = ins[1] * outs[1] * outs[0]
+        # self.n_params = get_params(self)
+        # self.n_seconds = linear_time_cal(ins, outs)
         self.name = self.__repr__()
         
     elif isinstance(self, nn.ReLU):
-        self.n_macs = ins[1] * outs[1] * outs[0]
-        self.n_params = get_params(self)
-        self.n_seconds = relu_time_cal(ins, outs) # calculated in ms 
+        self.n_macs = 0
+        self.n_params = 0
+        self.n_seconds = 0
+        # self.n_macs = ins[1] * outs[1] * outs[0]
+        # self.n_params = get_params(self)
+        # self.n_seconds = relu_time_cal(ins, outs)
         self.name = self.__repr__()
         
     elif isinstance(self, nn.BatchNorm2d):
-        self.n_macs = ins[1] * outs[1] * outs[0]
-        self.n_params = get_params(self)
-        self.n_seconds = bn_time_cal(ins, outs) # calculated in ms 
+        self.n_macs = 0
+        self.n_params = 0
+        self.n_seconds = 0
+        # self.n_macs = ins[1] * outs[1] * outs[0]
+        # self.n_params = get_params(self)
+        # self.n_seconds = bn_time_cal(ins, outs)
         self.name = self.__repr__()
         
     elif isinstance(self, nn.AvgPool2d):
-        self.n_macs = ins[1] * ins[2] * ins[3] * ins[0]
+        self.n_macs = 0
         self.n_params = 0
-        self.n_seconds = avgpool_time_cal(ins, outs, self.kernel_size) # calculated in ms 
+        self.n_seconds = 0
+        # self.n_macs = ins[1] * ins[2] * ins[3] * ins[0]
+        # self.n_params = 0
+        # self.n_seconds = avgpool_time_cal(ins, outs, self.kernel_size)
         self.name = self.__repr__()
         
     elif isinstance(self, nn.AdaptiveAvgPool2d):
-        self.n_macs = ins[1] * ins[2] * ins[3] * ins[0]
+        self.n_macs = 0
+        # self.n_macs = ins[1] * ins[2] * ins[3] * ins[0]
         self.n_params = 0
         self.n_seconds = 0
         self.name = self.__repr__()
 
     elif isinstance(self, mb.SqueezeAndExcitation):
-        self.n_macs = ins[1] * ins[2] * ins[3] * ins[0]
+        self.n_macs = 0
+        # self.n_macs = ins[1] * ins[2] * ins[3] * ins[0]
         self.n_params = 0
         self.n_seconds = 0
         add_sub(self, self.se_reduce)

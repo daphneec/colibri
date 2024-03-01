@@ -1,20 +1,21 @@
 #!/bin/bash
 
 #SBATCH -N 1
-#SBATCH --gres=gpu:pascal:4
-#SBATCH --cpus-per-task=10
+#SBATCH --gres=gpu:pascal:
+#SBATCH --cpus-per-task=
 #SBATCH -t 150:00:00
-#SBATCH --mem=240G
-#SBATCH -p all
+#SBATCH --mem=250G
+#SBATCH --partition=
 #SBATCH -o "%CURRENT_FOLDER%/logs_%j.out"
-#SBATCH --nodelist=ivi-cn017
+#SBATCH --nodelist=ivi-cn0
 
 # GLOBALS
 NUM_NODES=1
-GPUS_PER_NODE=4
+GPUS_PER_NODE=
 MODE=normal                            # Change to 'secure' for CrypTen; or "insecure" for analytical model on pytorch layers
 CONFIG_FILE=configs/cls_imagenet.yml   # Keep for insecure. Change to 'secure_....yml' for CrypTen
-export OM_NUM_THREADS=1
+export OMP_NUM_THREADS=1
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 # Go to the folder
 cd "%CURRENT_FOLDER%"

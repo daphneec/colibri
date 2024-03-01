@@ -11,7 +11,7 @@ import models.hrnet_base as hrb
 import models.transformer as transformer
 from utils import distributed as udist
 from utils.config import DEVICE_MODE
-from utils.secure_profiling_prediction import *
+
 
 import warnings
 warnings.filterwarnings("ignore")
@@ -25,22 +25,22 @@ macs_space = 15
 seconds_space = 15
 
 
-# class Timer(object):
+class Timer(object):
 
-#     def __init__(self, verbose=False):
-#         self.verbose = verbose
-#         self.start = None
-#         self.end = None
+    def __init__(self, verbose=False):
+        self.verbose = verbose
+        self.start = None
+        self.end = None
 
-#     def __enter__(self):
-#         self.start = time.time()
-#         return self
+    def __enter__(self):
+        self.start = time.time()
+        return self
 
-#     def __exit__(self, *args):
-#         self.end = time.time()
-#         self.time = self.end - self.start
-#         if self.verbose:
-#             print('Elapsed time: %f ms.' % self.time)
+    def __exit__(self, *args):
+        self.end = time.time()
+        self.time = self.end - self.start
+        if self.verbose:
+            print('Elapsed time: %f ms.' % self.time)
 
 
 def get_params(self):
@@ -48,15 +48,15 @@ def get_params(self):
     return np.sum([np.prod(list(w.size())) for w in self.parameters()])
 
 
-# def run_forward(self, input, num_forwards=10):
-#     if num_forwards <= 0:
-#         return 0.0
-#     with Timer() as t:
-#         for _ in range(num_forwards):
-#             self.forward(*input)
-#             if DEVICE_MODE == "gpu": torch.cuda.synchronize()
+def run_forward(self, input, num_forwards=10):
+    if num_forwards <= 0:
+        return 0.0
+    with Timer() as t:
+        for _ in range(num_forwards):
+            self.forward(*input)
+            if DEVICE_MODE == "gpu": torch.cuda.synchronize()
 
-#     return int(t.time * 1e9 / num_forwards)
+    return int(t.time * 1e9 / num_forwards)
 
 
 def conv_module_name_filter(name):
@@ -78,8 +78,8 @@ def module_profiling(self, input, output, num_forwards, verbose):
         m.n_macs += getattr(sub_op, 'n_macs', 0)
         m.n_params += getattr(sub_op, 'n_params', 0)
         m.n_seconds += getattr(sub_op, 'n_seconds', 0)
-
-    # _run_forward = functools.partial(run_forward, num_forwards=num_forwards)
+        
+    _run_forward = functools.partial(run_forward, num_forwards=num_forwards)
     # if isinstance(self, (hr.ParallelModule, hr.FuseModule, hr.HeadModule)) \
     #     or (isinstance(self, nn.Sequential) and isinstance(self[0], hr.ParallelModule)):
     if not input:
@@ -95,53 +95,75 @@ def module_profiling(self, input, output, num_forwards, verbose):
         self._profiling_input_size = ins
         self._profiling_output_size = outs
     if isinstance(self, nn.Conv2d):
+        # self.n_macs = 0
+        # self.n_params = 0
+        # self.n_seconds = 0
         self.n_macs = (ins[1] * outs[1] * self.kernel_size[0] *
                        self.kernel_size[1] * outs[2] * outs[3] //
                        self.groups) * outs[0]
         self.n_params = get_params(self)
-        self.n_seconds = conv_time_cal(ins, outs, self.kernel_size) # calculated in ms 
-        self.name = conv_module_name_filter(self.__repr__())
-        
-    elif isinstance(self, nn.ConvTranspose2d):
-        self.n_macs = (ins[1] * outs[1] * self.kernel_size[0] *
-                      self.kernel_size[1] * outs[2] * outs[3] //
-                      self.groups) * outs[0]
-        self.n_params = get_params(self)
-        self.n_seconds = conv_time_cal(ins, outs, self.kernel_size) # calculated in ms 
+        self.n_seconds = _run_forward(self, input)
         self.name = conv_module_name_filter(self.__repr__())
     
+    elif isinstance(self, nn.ConvTranspose2d):
+        self.n_macs = 0
+        self.n_params = 0
+        self.n_seconds = 0
+        # self.n_macs = (ins[1] * outs[1] * self.kernel_size[0] *
+        #               self.kernel_size[1] * outs[2] * outs[3] //
+        #               self.groups) * outs[0]
+        # self.n_params = get_params(self)
+        # self.n_seconds = _run_forward(self, input)
+        self.name = conv_module_name_filter(self.__repr__())
+
     elif isinstance(self, nn.Linear):
-        self.n_macs = ins[1] * outs[1] * outs[0]
-        self.n_params = get_params(self)
-        self.n_seconds = linear_time_cal(ins, outs) # calculated in ms 
+        self.n_macs = 0
+        self.n_params = 0
+        self.n_seconds = 0
+        # self.n_macs = ins[1] * outs[1] * outs[0]
+        # self.n_params = get_params(self)
+        # self.n_seconds = _run_forward(self, input)
         self.name = self.__repr__()
-        
+    
     elif isinstance(self, nn.ReLU):
-        self.n_macs = ins[1] * outs[1] * outs[0]
-        self.n_params = get_params(self)
-        self.n_seconds = relu_time_cal(ins, outs) # calculated in ms 
+        self.n_macs = 0
+        self.n_params = 0
+        self.n_seconds = 0
+        # self.n_macs = ins[1] * outs[1] * outs[0]
+        # self.n_params = get_params(self)
+        # self.n_seconds = _run_forward(self, input)
         self.name = self.__repr__()
         
     elif isinstance(self, nn.BatchNorm2d):
-        self.n_macs = ins[1] * outs[1] * outs[0]
-        self.n_params = get_params(self)
-        self.n_seconds = bn_time_cal(ins, outs) # calculated in ms 
-        self.name = self.__repr__()
-        
-    elif isinstance(self, nn.AvgPool2d):
-        self.n_macs = ins[1] * ins[2] * ins[3] * ins[0]
-        self.n_params = 0
-        self.n_seconds = avgpool_time_cal(ins, outs, self.kernel_size) # calculated in ms 
-        self.name = self.__repr__()
-        
-    elif isinstance(self, nn.AdaptiveAvgPool2d):
-        self.n_macs = ins[1] * ins[2] * ins[3] * ins[0]
+        self.n_macs = 0
         self.n_params = 0
         self.n_seconds = 0
+        # self.n_macs = ins[1] * outs[1] * outs[0]
+        # self.n_params = get_params(self)
+        # self.n_seconds = _run_forward(self, input)
         self.name = self.__repr__()
 
+    elif isinstance(self, nn.AvgPool2d):
+        self.n_macs = 0
+        self.n_params = 0
+        self.n_seconds = 0
+        # self.n_macs = ins[1] * ins[2] * ins[3] * ins[0]
+        # self.n_params = 0
+        # self.n_seconds = _run_forward(self, input)
+        self.name = self.__repr__()
+    
+    elif isinstance(self, nn.AdaptiveAvgPool2d):
+        self.n_macs = 0
+        self.n_params = 0
+        self.n_seconds = 0
+        # self.n_macs = ins[1] * ins[2] * ins[3] * ins[0]
+        # self.n_params = 0
+        # self.n_seconds = #_run_forward(self, input)
+        self.name = self.__repr__()
+    
     elif isinstance(self, mb.SqueezeAndExcitation):
-        self.n_macs = ins[1] * ins[2] * ins[3] * ins[0]
+        self.n_macs = 0
+        # self.n_macs = ins[1] * ins[2] * ins[3] * ins[0]
         self.n_params = 0
         self.n_seconds = 0
         add_sub(self, self.se_reduce)
@@ -249,7 +271,7 @@ def module_profiling(self, input, output, num_forwards, verbose):
         for op in self.fuse_layers:
             add_sub(self, op)
         self.name = self.__repr__()
-        
+    
     elif isinstance(self, hrb.BasicBlock):
         self.n_macs = 0
         self.n_params = 0
@@ -269,7 +291,7 @@ def module_profiling(self, input, output, num_forwards, verbose):
         if self.downsample is not None:
             add_sub(self, self.downsample)
         self.name = self.__repr__()
-        
+    
     else:
         # This works only in depth-first travel of modules.
         self.n_macs = 0
@@ -333,8 +355,7 @@ def model_profiling(model,
                     channel=3,
                     use_cuda=True,
                     num_forwards=10,
-                    verbose=True,
-                    encrypt=False):
+                    verbose=True):
     """ Pytorch model profiling with input image size
     (batch, channel, height, width).
     The function exams the number of multiply-accumulates (n_macs).
@@ -346,7 +367,6 @@ def model_profiling(model,
         batch: int
         channel: int
         use_cuda: bool
-        encrypt: bool - If True, encrypts the input tensor to a CrypTensor first.
 
     Returns:
         macs: int
@@ -355,9 +375,6 @@ def model_profiling(model,
     """
     model.eval()
     data = torch.rand(batch, channel, height, width)
-
-    if encrypt: data = crypten.cryptensor(data)
-
     origin_device = next(model.parameters()).device
     device = torch.device("cuda" if use_cuda else "cpu")
     model = model.to(device)
@@ -374,7 +391,7 @@ def model_profiling(model,
         model(data)
     if verbose:
         logging.info(''.center(
-            name_space + seconds_space, '-')) #name_space + params_space + macs_space + seconds_space, '-'))
+            name_space + params_space + macs_space + seconds_space, '-'))
         logging.info('Total'.ljust(name_space, ' ') +
                      '{:,}'.format(model.n_params).rjust(params_space, ' ') +
                      '{:,}'.format(model.n_macs).rjust(macs_space, ' ') +
