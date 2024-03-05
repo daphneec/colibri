@@ -4,15 +4,11 @@ venv
 data/cityscapes
 data/fake
 data/imagenet_lmdb
-<<<<<<< HEAD
-<<<<<<< HEAD
+
 utils/.DS_Store
 .DS_Store
 eloise_test
 tests/test_secure_profilling_new.py
-=======
-=======
->>>>>>> 478890d71fa091345736ef8b9e94a9e6efb63c0e
 
 miniconda_py311
 miniconda_py311_installer.sh
@@ -20,7 +16,3 @@ log*.out
 *.local
 
 tests/test_secure_profilling.py
-<<<<<<< HEAD
->>>>>>> 478890d71fa091345736ef8b9e94a9e6efb63c0e
-=======
->>>>>>> 478890d71fa091345736ef8b9e94a9e6efb63c0e

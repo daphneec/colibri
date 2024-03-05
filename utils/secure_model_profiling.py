@@ -23,9 +23,6 @@ from utils.secure_profiling_prediction_weak import *
 import warnings
 warnings.filterwarnings("ignore") 
 
-import warnings
-warnings.filterwarnings("ignore") 
-
 model_profiling_hooks = []
 model_profiling_speed_hooks = []
 
