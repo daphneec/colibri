@@ -245,15 +245,12 @@ def get_model():
             raise ValueError("Non-distributed execution is not supported in Crypten, sorry")
     else:
         if FLAGS.use_distributed:
-            if DEVICE_MODE == "cpu":
-                model_wrapper = udist.AllReduceDistributedDataParallel(model)
-            else:
-                model_wrapper = udist.AllReduceDistributedDataParallel(model.cuda())
+            with torch.no_grad():
+                with crypten.no_grad():
+                    model = model.cuda()
+            model_wrapper = udist.AllReduceDistributedDataParallel(model)
         else:
-            # if DEVICE_MODE == "cpu":
-            #     model_wrapper = torch.nn.DataParallel(model)
-            # else:
-            #     model_wrapper = torch.nn.DataParallel(model).cuda()
+            # model_wrapper = torch.nn.DataParallel(model).cuda()
             raise ValueError("Non-distributed execution is not supported in Crypten, sorry")
     return model, model_wrapper
 
@@ -299,7 +296,7 @@ def setup_distributed(num_images=None):
     """Setup distributed related parameters."""
     # init distributed
     if FLAGS.use_distributed:
-        udist.init_dist(backend="gloo")
+        udist.init_dist(backend="nccl" if DEVICE_MODE == "gpu" else "gloo")
         FLAGS.batch_size = udist.get_world_size() * FLAGS.per_gpu_batch_size
         FLAGS._loader_batch_size = FLAGS.per_gpu_batch_size
         if FLAGS.bn_calibration:

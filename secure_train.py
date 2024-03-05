@@ -18,7 +18,7 @@ from utils.common import get_device
 from utils.common import extract_item
 from utils.common import get_data_queue_size
 from utils.common import bn_calibration
-from utils.fix_hook import fix_deps, fix_debug
+from utils.fix_hook import fix_deps
 from utils import dataflow
 from utils import secure_optim as optim
 from utils import secure_distributed as udist
@@ -33,7 +33,6 @@ from mmseg.validation import SegVal, keypoint_val
 
 # STOP THE PRESSES: Fix `cnn.Module`s not having some of the functions we expect (but would support)
 fix_deps()
-fix_debug()
 
 
 def shrink_model(model_wrapper,
@@ -524,7 +523,7 @@ def train_val_test():
                                                    model_wrapper, ema, 'val', segval, val_set)
 
             if FLAGS.prune_params['method'] is not None and FLAGS.prune_params['bn_prune_filter'] is not None:
-                prune_threshold = FLAGS.model_shrink_threshold  # 1e-3
+                prune_threshold = FLAGS.model_shrink_threshold  # 5 instead of 1e-3
                 masks = prune.cal_mask_network_slimming_by_threshold(
                     get_prune_weights(model_eval_wrapper), prune_threshold)  # get mask for all bn weights (depth-wise)
                 FLAGS._bn_to_prune.add_info_list('mask', masks)

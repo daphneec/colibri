@@ -2,7 +2,7 @@
 log_interval_detail: 2000
 
 # data related, check `utils/dataflow.py`
-dataset: imagenet1k_lmdb  # different dataset, could be one of ['imagenet1k', 'imagenet1k_lmdb']
+dataset: imagenet1k # different dataset, could be one of ['imagenet1k', 'imagenet1k_lmdb']
 data_transforms: imagenet1k_mnas_bicubic  # preprocessing strategy
 data_loader: imagenet1k_basic  # 'imagenet1k_basic' only
 data_loader_workers: 62  # number of total workers
@@ -60,7 +60,7 @@ reset_param_method: mnas
 use_distributed: True  # whether to use distributed training
 allreduce_bn: False  # whether to sync BN'statistics every iteration
 
-model: models.secure_hrnet
+model: models.hrnet
 model_kwparams: {
   active_fn: 'nn.ReLU',
   num_classes: 1000,
@@ -98,8 +98,8 @@ prune_params: {
 }
 
 # shrink model if xxx FLOPS is pruned, default never shrink for back compatibility
-model_shrink_threshold: 5
-model_shrink_delta_flops: 1
+model_shrink_threshold: 5 # 1.0e-3
+model_shrink_delta_flops: 1 #1.0e+6
 bn_calibration: True
 bn_calibration_steps: 10
 bn_calibration_per_gpu_batch_size: 256
@@ -111,5 +111,5 @@ bn_calibration_per_gpu_batch_size: 256
 use_hdfs: False
 eval_interval: 5
 
-dataset_dir: ./data/imagenet_lmdb  # dataset root
+dataset_dir: ./data/imagenet # dataset root
 log_dir: output/cls_imagenet

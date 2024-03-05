@@ -9,7 +9,7 @@ import torch.distributed as dist
 from torch.utils.tensorboard import SummaryWriter
 
 from utils import distributed as udist
-from utils.model_profiling import model_profiling
+from utils.insecure_model_profiling import model_profiling
 from utils.config import DEVICE_MODE, FLAGS
 from utils.meters import ScalarMeter
 from utils.meters import flush_scalar_meters

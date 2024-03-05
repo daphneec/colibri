@@ -13,7 +13,7 @@ import torch
 import models.compress_utils as cu
 from utils.common import add_prefix
 from utils.common import get_device
-from models.transformer import Transformer
+from models.secure_transformer import Transformer
 
 
 def _make_divisible(v, divisor, min_value=None):
@@ -138,7 +138,6 @@ class ConvBNReLU(cnn.Sequential):
             batch_norm_kwargs = {}
         if not padding:
             padding = (kernel_size - 1) // 2
-        # print([tensor.grad_fn for tensor in list(in_planes.parameters()) + list(out_planes.parameters())])
         super(ConvBNReLU, self).__init__(
             cnn.Conv2d(in_planes,
                       out_planes,

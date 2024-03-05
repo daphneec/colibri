@@ -25,12 +25,18 @@ For unsupported platforms, feel free to adapt `install.sh` yourself an make a PR
 
 Then you can run the script as above to install the pip packages.
 
-> If you intent to install `requirements.txt` manually, note that `start.sh` below assumes you have a local virtual environment called `venv`. The following steps are taken by the `install.sh` script to make this happen:
-> ```bash
-> python3 -m venv ./venv
-> . venv/bin/activate
-> pip3 install -r requirements.txt
-> ```
+If you are running on an older system, you can use CUDA 11 instead of the latest by adding the `--cuda11`-flag:
+```bash
+# -c11 works too!
+./install.sh --cuda11
+```
+
+Finally, you can clean any previous installation by running:
+```bash
+./install.sh --clean
+```
+
+> If you intent to install `requirements.txt` manually, note that `start.sh` expects a miniconda environment to be present. Check `install.sh` for details on how this is installed.
 
 
 ### Running
@@ -38,11 +44,11 @@ To run the project, use the `start.sh` script to run it.
 
 It has the following arguments:
 ```
-start.sh [normal|secure] <PATH_TO_CONFIG_YAML>
+start.sh [normal|secure|insecure] <PATH_TO_CONFIG_YAML>
 ```
 
 If you want to run the framework _without_ Crypten, use the `normal` keyword to the `start.sh` script.  
-If you want to run _with_ Crypten use the `secure` keyword.
+If you want to run _with_ Crypten use the `secure` keyword. 'insecure' uses pytorch layers in the normal hr-nas but evaluates the runtime of layers using the analytical model.
 
 Then, dependening on which dataset you want to use (see below how to install them), select the appropriate configuration file in the `configs` directory. In addition to the ones normally provided by HR-NAS, there are also config files prefixed with `secure_`, which can only be used in the `secure` mode. In addition, files prefixed with `cpu_` are modified to make the framework run in a mode that doesn't require a GPU.
 
@@ -54,6 +60,24 @@ Or, to run a Crypten-modified ImageNet dataset using CPU-only modifications:
 ```bash
 ./start.sh secure configs/secure_cpu_cls_imagenet.yml
 ```
+
+Or, to run a non-Crypten version of a Coco dataset, but using the analytical model:
+'''
+.start.sh inseucre configs/keypoint_coco.yml
+'''
+
+### Running - Cluster
+If you're running the project on a SLURM-cluster, you can make your life easier by using the provided `runit.sh` and `launch.sh` scripts.
+
+`launch.sh` wraps the `start.sh` and makes it a distributed SLURM job script, for use with `sbatch`. You can change this file to change properties of the resource requirements (see the `# SBATCH=...` comments).
+
+`runit.sh` in turn wraps `launch.sh`, to launch it using `sbatch` and then attach to the output log file.
+
+Note, however, that to be directory-agnostic, `launch.sh` needs to be preprocessed with the current folder location. To do so without `runit.sh`, manually run:
+```bash
+sed -i "s+%CURRENT_FOLDER%+$(pwd)+g" <PATH_TO_LAUNCH.SH FILE>
+```
+where `<PATH_TO_LAUNCH.SH FILE>` should be replaced with the path in question.
 
 
 ### Modifications
@@ -76,7 +100,7 @@ This version of the framework shows the following modifications over those of th
     4. Fixed broken usage of updated pickle package (`utils/lmdb_dataset.py`).
     5. Added option to generate fake `cls_imagenet.yml`-compatible dataset with `tools/generate_fake_data.py` (note: change the dataset type to the non-lmdb version!).
 3. _Convenience additions_
-    1. Added scripts for `install.sh`ing, `start.sh`ing and `clean.sh`ing.
+    1. Added scripts for `launch.sh`ing, `install.sh`ing, `start.sh`ing and `clean.sh`ing.
 
 Plus other stuff I have not mention here, but is probably small and insignificant. See diffs with `secure_` version with non-`secure_` version for specific changes.
 

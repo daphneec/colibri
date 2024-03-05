@@ -97,11 +97,11 @@ def dist_reduce_tensor(tensor, dst=0):
     world_size = get_world_size()
     if world_size < 2:
         return tensor
-    with torch.no_grad():
-        with crypten.no_grad():
-            dist.reduce(tensor, dst=dst)
-            if get_rank() == dst:
-                tensor.div_(world_size)
+    # with torch.no_grad():
+    with crypten.no_grad():
+        dist.reduce(tensor, dst=dst)
+        if get_rank() == dst:
+            tensor.div_(world_size)
     return tensor
 
 
@@ -110,10 +110,10 @@ def dist_all_reduce_tensor(tensor):
     world_size = get_world_size()
     if world_size < 2:
         return tensor
-    with torch.no_grad():
-        with crypten.no_grad():
-            dist.all_reduce(tensor)
-            tensor.div_(world_size)
+    # with torch.no_grad():
+    with crypten.no_grad():
+        dist.all_reduce(tensor)
+        tensor.div_(world_size)
     return tensor
 
 

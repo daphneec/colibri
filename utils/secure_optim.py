@@ -347,7 +347,26 @@ def get_optimizer(model, FLAGS):
                                     nesterov=FLAGS.nesterov,
                                     weight_decay=weight_decay)  # set weight decay only on convs and fcs manually.
     elif FLAGS.optimizer == 'rmsprop':
-        # print([tensor.grad_fn for tensor in model.parameters()])
+        # def find_nonleaf(where, model_name, model):
+        #     # Add the model name
+        #     where += f"::{model_name}"
+
+        #     # Search this model's parameters
+        #     nonleafs = []
+        #     for param in model.parameters():
+        #         if not param.is_leaf:
+        #             nonleafs.append(f"{where}.{param.name}")
+
+        #     # Add child things
+        #     for name, child in model.named_children():
+        #         nonleafs += find_nonleaf(where, name, child)
+
+        #     # Done
+        #     return nonleafs
+
+
+        # print(f"(3) Nonleaf tensors in model : {len(find_nonleaf('', str(type(model)), model))}")
+        # exit(0)
         optimizer = RMSprop(model.parameters(),
                             lr=FLAGS.lr,
                             alpha=FLAGS.alpha,
