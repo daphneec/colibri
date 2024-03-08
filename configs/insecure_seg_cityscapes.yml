@@ -108,6 +108,6 @@ log_interval: 10
 num_epochs: 430
 base_lr: 0.04
 single_gpu_test: False
-eval_interval: 10
+eval_interval: 3
 data_root: ./data/cityscapes
 log_dir: output/seg_cityscapes

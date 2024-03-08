@@ -107,7 +107,7 @@ log_interval: 10
 num_epochs: 200
 base_lr: 0.04
 single_gpu_test: False
-eval_interval: 25
+eval_interval: 3
 
 data_root: ./data/ade20k
 log_dir: output/seg_ade20k

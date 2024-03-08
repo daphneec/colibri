@@ -110,7 +110,7 @@ bn_calibration_per_gpu_batch_size: 512
 'model_kwparams.batch_norm_epsilon': 1.0e-3
 
 use_hdfs: False
-eval_interval: 5
+ 3
 
 dataset_dir: ./data/imagenet_lmdb  # dataset root
 log_dir: output/cls_imagenet
