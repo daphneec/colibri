@@ -91,7 +91,7 @@ prune_params: {
 use_distributed: True
 allreduce_bn: False
 
-model_shrink_threshold: 5
+model_shrink_threshold: 0.001
 model_shrink_delta_flops: 1
 bn_calibration: True
 bn_calibration_steps: 10
