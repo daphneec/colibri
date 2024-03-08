@@ -5,6 +5,11 @@ data/cityscapes
 data/fake
 data/imagenet_lmdb
 
+utils/.DS_Store
+.DS_Store
+eloise_test
+tests/test_secure_profilling_new.py
+
 miniconda_py311
 miniconda_py311_installer.sh
 log*.out

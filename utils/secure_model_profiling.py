@@ -15,7 +15,10 @@ from models.secure_layernorm import LayerNorm
 import models.secure_transformer as transformer
 from utils import distributed as udist
 from utils.config import DEVICE_MODE
-from utils.secure_profiling_prediction import *
+
+"""Change here for analytical model of different settings"""
+from utils.secure_profiling_prediction_weak import *
+# from utils.secure_profiling_prediction_powerful import *
 
 import warnings
 warnings.filterwarnings("ignore") 

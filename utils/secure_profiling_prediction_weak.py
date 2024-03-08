@@ -1,7 +1,7 @@
 import pandas as pd
 from joblib import load
 
-LR_folderpath = "./utils/LR_model/"
+LR_folderpath = "./utils/LR_model/weak/"
 name = "client" # Only considering the client side estimation
 
 def conv_time_cal(ins, outs, kernel_size):
