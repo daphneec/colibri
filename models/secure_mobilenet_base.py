@@ -89,7 +89,7 @@ class HSwish(object):
     """
 
     def forward(self, x):
-        return x * cnn.ReLU6(True).forward(x + 3).div_(6)
+        return x * cnn.ReLU(True).forward(x + 3).div_(6)
 
 
 class SqueezeAndExcitation(cnn.Module):

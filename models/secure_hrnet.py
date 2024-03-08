@@ -84,7 +84,7 @@ class ParallelModule(cnn.Module):
                  expand_ratio=6,
                  kernel_sizes=[3, 5, 7],
                  batch_norm_kwargs=None,
-                 active_fn=get_active_fn('nn.ReLU6')):
+                 active_fn=get_active_fn('nn.ReLU')):
         super(ParallelModule, self).__init__()
 
         self.num_branches = num_branches
@@ -162,7 +162,7 @@ class FuseModule(cnn.Module):
                  expand_ratio=6,
                  kernel_sizes=[3, 5, 7],
                  batch_norm_kwargs=None,
-                 active_fn=get_active_fn('nn.ReLU6'),
+                 active_fn=get_active_fn('nn.ReLU'),
                  use_hr_format=False,
                  only_fuse_neighbor=True,
                  directly_downsample=True):
@@ -371,7 +371,7 @@ class HeadModule(cnn.Module):
                  expand_ratio=6,
                  kernel_sizes=[3, 5, 7],
                  batch_norm_kwargs=None,
-                 active_fn=get_active_fn('nn.ReLU6'),
+                 active_fn=get_active_fn('nn.ReLU'),
                  concat_head_for_cls=False):
         super(HeadModule, self).__init__()
 
@@ -470,7 +470,7 @@ class HighResolutionNet(cnn.Module):
                  bn_momentum=0.1,
                  bn_epsilon=1e-5,
                  dropout_ratio=0.2,
-                 active_fn='nn.ReLU6',
+                 active_fn='nn.ReLU',
                  block='InvertedResidualChannels',
                  width_mult=1.0,
                  round_nearest=8,

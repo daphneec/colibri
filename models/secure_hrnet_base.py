@@ -75,7 +75,7 @@ class BasicBlock(cnn.Module):
                  expand_ratio=4,
                  kernel_sizes=[3, 5, 7],
                  batch_norm_kwargs={'momentum': 0.1, 'eps': 1e-5},
-                 active_fn=get_active_fn('nn.ReLU6')):
+                 active_fn=get_active_fn('nn.ReLU')):
         super(BasicBlock, self).__init__()
         self.conv1 = block(
             inplanes,
@@ -317,7 +317,7 @@ class HighResolutionNetBase(cnn.Module):
                  bn_momentum=0.1,
                  bn_epsilon=1e-5,
                  dropout_ratio=0.2,
-                 active_fn='nn.ReLU6',
+                 active_fn='nn.ReLU',
                  block='InvertedResidualChannels',
                  width_mult=1.0,
                  round_nearest=8,
