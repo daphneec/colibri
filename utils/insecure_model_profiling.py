@@ -11,7 +11,7 @@ import models.hrnet_base as hrb
 import models.transformer as transformer
 from utils import distributed as udist
 from utils.config import DEVICE_MODE
-from utils.secure_profiling_prediction import *
+from utils.secure_profiling_prediction_powerful import *
 
 import warnings
 warnings.filterwarnings("ignore")
