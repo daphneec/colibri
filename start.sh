@@ -158,12 +158,11 @@ fi
 
 ### EXECUTION ###
 # Resolve the master address to an IP, always
-#if [[ ! "$master_addr" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-#    ip="$(host -4 $master_addr | awk '/has address/ { print $4 }')"
-#    echo "[start.sh] Resolved '$master_addr' as '$ip'"
-#    master_addr="$ip"
-#fi
-
+if [[ ! "$master_addr" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    ip="$(python3 -c "import socket; print(socket.gethostbyname('$master_addr'))")"
+    echo "[start.sh] Resolved '$master_addr' as '$ip'"
+    master_addr="$ip"
+fi
 # Resolve the executable
 exec="train.py"
 if [[ "$mode" == "secure" ]]; then
