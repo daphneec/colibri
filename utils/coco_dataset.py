@@ -17,10 +17,11 @@ try:
     from pycocotools.coco import COCO
     from pycocotools.cocoeval import COCOeval
     import json_tricks as json
+    from nms.nms import oks_nms
+    from nms.nms import soft_oks_nms
 except:
     pass
-from nms.nms import oks_nms
-from nms.nms import soft_oks_nms
+
 
 class JointsDataset(Dataset):
     def __init__(self, cfg, root, image_set, is_train, transform=None):
