@@ -323,11 +323,13 @@ def data_loader(train_set, val_set, test_set, FLAGS):
                 train_set)
             train_shuffle = False
         val_sampler = torch.utils.data.distributed.DistributedSampler(val_set, shuffle=False)
+        test_sampler = torch.utils.data.distributed.DistributedSampler(test_set, shuffle=False)
     else:
         if not FLAGS.test_only or FLAGS.bn_calibration:
             train_sampler = None
             train_shuffle = True
         val_sampler = None
+        test_sampler = None
 
     if FLAGS.data_loader == 'imagenet1k_basic':
         if not FLAGS.test_only:
@@ -357,6 +359,15 @@ def data_loader(train_set, val_set, test_set, FLAGS):
                                                          worker_init_fn=None,
                                                          sampler=None if FLAGS.single_gpu_test else val_sampler,
                                                          drop_last=FLAGS.get('drop_last', False))
+                test_loader = torch.utils.data.DataLoader(test_set,
+                                                         batch_size=1,
+                                                         shuffle=False,
+                                                         pin_memory=True,
+                                                         num_workers=FLAGS.data_loader_workers,
+                                                         collate_fn=partial(collate, samples_per_gpu=1),
+                                                         worker_init_fn=None,
+                                                         sampler=None if FLAGS.single_gpu_test else test_sampler,
+                                                         drop_last=FLAGS.get('drop_last', False))
             elif FLAGS.dataset == 'coco':
                 val_loader = torch.utils.data.DataLoader(val_set,
                                                          batch_size=FLAGS._loader_batch_size * 8,
@@ -370,7 +381,7 @@ def data_loader(train_set, val_set, test_set, FLAGS):
                                            FLAGS._loader_batch_size,
                                            False,
                                            sampler=val_sampler)
-        test_loader = val_loader
+        # test_loader = val_loader
     else:
         try:
             data_loader_lib = importlib.import_module(FLAGS.data_loader)
