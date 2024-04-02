@@ -74,7 +74,12 @@ class SegVal:
         self.num_classes = num_classes
         self.mode = 'whole'
 
-    def run(self, epoch, loader, model, FLAGS):
+    def run(self, epoch, loader, model, FLAGS, test_idx=None):
+        """
+        Args:
+        test_idx (list[int]): List of test image indices. Defaults to None, meaning testing all data.
+        """
+        
         model.eval()
         dataset = loader.dataset
         data_iterator = iter(loader)
@@ -83,6 +88,8 @@ class SegVal:
         if udist.is_master():
             prog_bar = mmcv.ProgressBar(len(dataset))
         for batch_idx, input in enumerate(data_iterator):
+            if test_idx and (batch_idx not in test_idx):
+                continue
             imgs = input['img']
             img_metas = input['img_metas'][0].data
             assert len(imgs) == len(img_metas)
@@ -110,7 +117,7 @@ class SegVal:
             results = collect_results_cpu(results, len(dataset))
         performance = None
         if udist.is_master():
-            performance = dataset.evaluate(results)
+            performance = dataset.evaluate(results, test_idx=test_idx)
         dist.barrier()
         # dist.broadcast(performance, 0)
         return performance

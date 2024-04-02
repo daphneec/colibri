@@ -130,7 +130,7 @@ def val():
                                                           test_transforms, FLAGS)
         
         segval = None
-    _, calib_loader, _, test_loader = dataflow.data_loader(
+    _, calib_loader, val_loader, _ = dataflow.data_loader(
         train_set, val_set, test_set, FLAGS)
 
     if udist.is_master():
@@ -148,8 +148,9 @@ def val():
         else:
             test_meters = mc.get_seg_distill_meters('test')
 
-    validate(0, calib_loader, test_loader, criterion, test_meters,
-             model_wrapper, ema, 'test', segval, test_set)
+    # The test dataset is not publicly available. Therefore, testing is performed on the validation dataset. 
+    validate(0, calib_loader, val_loader, criterion, test_meters,
+             model_wrapper, ema, 'test', segval, val_set)
     return
 
 
@@ -187,10 +188,12 @@ def validate(epoch, calib_loader, val_loader, criterion, val_meters,
                     results = keypoint_val(val_set, val_loader, model_eval_wrapper.module, criterion)
             else:
                 assert segval is not None
+                # `test_idx` parameter specifies a list of indices about the images for testing
                 results = segval.run(epoch,
                                      val_loader,
                                      model_eval_wrapper.module if FLAGS.single_gpu_test else model_eval_wrapper,
-                                     FLAGS)
+                                     FLAGS,
+                                     test_idx=[0,1,2])
         else:
             results = run_one_epoch(epoch,
                                     val_loader,
