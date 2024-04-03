@@ -142,29 +142,69 @@ def reduce_and_flush_meters(meters, method='avg', encrypt=False):
             meter = meters[name]
             if not isinstance(meter, ScalarMeter):
                 continue
-            if method == 'avg':
-                method_fun = "avg"
-            elif method == 'sum':
-                method_fun = "sum"
-            elif method == 'max':
-                method_fun = "max"
-            elif method == 'min':
-                method_fun = "min"
-            else:
-                raise NotImplementedError(
-                    'flush method: {} is not yet implemented.'.format(method))
             tensor = torch.tensor(meter.values)
+
+            # From here on, branch depending on whether we're doing CrypTen or not
             if encrypt:
+                # CrypTen
+                if method == 'avg':
+                    method_fun = "avg"
+                elif method == 'sum':
+                    method_fun = "sum"
+                elif method == 'max':
+                    method_fun = "max"
+                elif method == 'min':
+                    method_fun = "min"
+                else:
+                    raise NotImplementedError(
+                        'flush method: {} is not yet implemented.'.format(method))
+
+                # Don't forget to encrypt the temporary tensor
                 tensor = crypten.cryptensor(tensor)
-            if DEVICE_MODE == "gpu":
-                tensor = tensor.cuda()
-            gather_tensors = [
-                # TODO cryptenify
-                torch.ones_like(tensor) for _ in range(udist.get_world_size())
-            ]
-            # TODO cryptenify?
-            dist.all_gather(gather_tensors, tensor)
-            value = getattr(crypten.cat(gather_tensors), method_fun)()
+
+                # Cast the tensor to the GPU
+                if DEVICE_MODE == "gpu":
+                    tensor = tensor.cuda()
+
+                # Do something with gathering. Will probably crash if ever run in CrypTen mode
+                gather_tensors = [
+                    # TODO cryptenify
+                    torch.ones_like(tensor) for _ in range(udist.get_world_size())
+                ]
+                # TODO cryptenify?
+                dist.all_gather(gather_tensors, tensor)
+
+                # Finally, apply the collection method
+                value = getattr(crypten.cat(gather_tensors), method_fun)()
+
+            else:
+                # Pytorch
+                if method == 'avg':
+                    method_fun = torch.mean
+                elif method == 'sum':
+                    method_fun = torch.sum
+                elif method == 'max':
+                    method_fun = torch.max
+                elif method == 'min':
+                    method_fun = torch.min
+                else:
+                    raise NotImplementedError(
+                        'flush method: {} is not yet implemented.'.format(method))
+
+                # Cast the tensor to the GPU
+                if DEVICE_MODE == "gpu":
+                    tensor = tensor.cuda()
+
+                # Do something with gathering
+                gather_tensors = [
+                    torch.ones_like(tensor) for _ in range(udist.get_world_size())
+                ]
+                dist.all_gather(gather_tensors, tensor)
+
+                # Finally, apply the collection method
+                value = method_fun(torch.cat(gather_tensors))
+
+            # The rest can be done for both
             meter.flush(value)
             results[name] = value
     return results
