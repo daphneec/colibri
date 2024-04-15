@@ -9,8 +9,14 @@ import yaml
 import torch
 from packaging import version
 import json
-import crypten
-import crypten.nn as cnn
+
+import sys
+sys.path.append('/Users/eloise/workspace/HR-NAS/code/crypten_eloise/')
+import crypten_eloise as crypten
+import crypten_eloise.nn as cnn
+
+# import crypten
+# import crypten.nn as cnn
 
 
 def get_params_by_name(model, names):

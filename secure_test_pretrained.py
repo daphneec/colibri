@@ -3,8 +3,12 @@ import logging
 import time
 
 import torch
-import crypten
-import crypten.nn as cnn
+
+import sys
+sys.path.append('/Users/eloise/workspace/HR-NAS/code/crypten_eloise/')
+import crypten_eloise as crypten
+# import crypten
+# import crypten.nn as cnn
 
 from utils.config import DEVICE_MODE, FLAGS, _ENV_EXPAND
 from utils.common import set_random_seed
@@ -18,7 +22,7 @@ from mmseg.loss import CrossEntropyLoss, JointsMSELoss, accuracy_keypoint
 from utils.fix_hook import fix_deps
 
 import secure_common as mc
-
+from mmseg.secure_validation import SegVal, keypoint_val
 
 # STOP THE PRESSES: Fix `cnn.Module`s not having some of the functions we expect (but would support)
 fix_deps()
@@ -61,9 +65,10 @@ def run_one_epoch(epoch,
         # mc.forward_loss(model, criterion, input, target, meters)
         mc.forward_loss(model, criterion, input, target, meters, task=FLAGS.model_kwparams.task, distill=False)
 
-    results = mc.reduce_and_flush_meters(meters)
+    # Set encrypt to True here, also need to init crypten ahead
+    results = mc.reduce_and_flush_meters(meters, encrypt=True)
     if udist.is_master():
-        logging.info('Epoch {}/{} {}: '.format(epoch, FLAGS.num_epochs, phase)
+        logging.info('Epoch {}/{} {}: '.format(epoch, 0, phase)
                      + ', '.join(
                          '{}: {:.4f}'.format(k, v) for k, v in results.items()))
         for k, v in results.items():
@@ -118,11 +123,14 @@ def val():
     # data
     if FLAGS.dataset == 'cityscapes':
         (train_set, val_set, test_set) = seg_dataflow.cityscapes_datasets(FLAGS)
+        segval = SegVal(num_classes=19)
     elif FLAGS.dataset == 'ade20k':
         (train_set, val_set, test_set) = seg_dataflow.ade20k_datasets(FLAGS)
+        segval = SegVal(num_classes=150)
     elif FLAGS.dataset == 'coco':
         (train_set, val_set, test_set) = seg_dataflow.coco_datasets(FLAGS)
         # print(len(train_set), len(val_set))  # 149813 104125
+        segval = None
     else:
         # data
         (train_transforms, val_transforms,
@@ -131,7 +139,8 @@ def val():
                                                           val_transforms,
                                                           test_transforms, FLAGS)
         
-    _, calib_loader, _, test_loader = dataflow.data_loader(
+        segval = None
+    _, calib_loader, val_loader, _  = dataflow.data_loader(
         train_set, val_set, test_set, FLAGS)
 
     if udist.is_master():
@@ -149,40 +158,53 @@ def val():
         else:
             test_meters = mc.get_seg_distill_meters('test')
 
-    validate(0, calib_loader, test_loader, criterion, test_meters,
-             model_wrapper, ema, 'test')
+    # The test dataset is not publicly available. Therefore, testing is performed on the validation dataset. 
+    validate(0, calib_loader, val_loader, criterion, test_meters,
+             model_wrapper, ema, 'test', segval, val_set)
     return
 
 
 def validate(epoch, calib_loader, val_loader, criterion, val_meters,
-             model_wrapper, ema, phase):
+             model_wrapper, ema, phase, segval=None, val_set=None):
     """Calibrate and validate."""
     assert phase in ['test', 'val']
     model_eval_wrapper = mc.get_ema_model(ema, model_wrapper)
 
     # bn_calibration
-    if FLAGS.get('bn_calibration', False):
-        if not FLAGS.use_distributed:
-            logging.warning(
-                'Only GPU0 is used when calibration when use DataParallel')
-        with torch.no_grad():
-            with crypten.no_grad():
-                _ = run_one_epoch(epoch,
-                                calib_loader,
-                                model_eval_wrapper,
-                                criterion,
-                                None,
-                                None,
-                                None,
-                                val_meters,
-                                max_iter=FLAGS.bn_calibration_steps,
-                                phase='bn_calibration')
-        if FLAGS.use_distributed:
-            udist.allreduce_bn(model_eval_wrapper)
+    # if FLAGS.get('bn_calibration', False):
+    #     if not FLAGS.use_distributed:
+    #         logging.warning(
+    #             'Only GPU0 is used when calibration when use DataParallel')
+    #     with torch.no_grad():
+    #         _ = run_one_epoch(epoch,
+    #                           calib_loader,
+    #                           model_eval_wrapper,
+    #                           criterion,
+    #                           None,
+    #                           None,
+    #                           None,
+    #                           val_meters,
+    #                           max_iter=FLAGS.bn_calibration_steps,
+    #                           phase='bn_calibration')
+    #     if FLAGS.use_distributed:
+    #         udist.allreduce_bn(model_eval_wrapper)
 
     # val
     with torch.no_grad():
-        with crypten.no_grad():
+        if FLAGS.model_kwparams.task == 'segmentation':
+            if FLAGS.dataset == 'coco':
+                results = 0
+                if udist.is_master():
+                    results = keypoint_val(val_set, val_loader, model_eval_wrapper.module, criterion)
+            else:
+                assert segval is not None
+                # `test_idx` parameter specifies a list of indices about the images for testing
+                results = segval.run(epoch,
+                                     val_loader,
+                                     model_eval_wrapper.module if FLAGS.single_gpu_test else model_eval_wrapper,
+                                     FLAGS,
+                                     test_idx=[1])
+        else:
             results = run_one_epoch(epoch,
                                     val_loader,
                                     model_eval_wrapper,
@@ -199,6 +221,7 @@ def main():
     """Entry."""
     FLAGS.test_only = True
     mc.setup_distributed()
+    crypten.init()
     if udist.is_master():
         FLAGS.log_dir = '{}/{}'.format(FLAGS.log_dir,
                                        time.strftime("%Y%m%d-%H%M%S-eval"))

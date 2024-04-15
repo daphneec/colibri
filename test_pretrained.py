@@ -58,7 +58,7 @@ def run_one_epoch(epoch,
 
     results = mc.reduce_and_flush_meters(meters)
     if udist.is_master():
-        logging.info('Epoch {}/{} {}: '.format(epoch, FLAGS.num_epochs, phase)
+        logging.info('Epoch {}/{} {}: '.format(epoch, 0, phase)
                      + ', '.join(
                          '{}: {:.4f}'.format(k, v) for k, v in results.items()))
         for k, v in results.items():
@@ -161,23 +161,23 @@ def validate(epoch, calib_loader, val_loader, criterion, val_meters,
     model_eval_wrapper = mc.get_ema_model(ema, model_wrapper)
 
     # bn_calibration
-    if FLAGS.get('bn_calibration', False):
-        if not FLAGS.use_distributed:
-            logging.warning(
-                'Only GPU0 is used when calibration when use DataParallel')
-        with torch.no_grad():
-            _ = run_one_epoch(epoch,
-                              calib_loader,
-                              model_eval_wrapper,
-                              criterion,
-                              None,
-                              None,
-                              None,
-                              val_meters,
-                              max_iter=FLAGS.bn_calibration_steps,
-                              phase='bn_calibration')
-        if FLAGS.use_distributed:
-            udist.allreduce_bn(model_eval_wrapper)
+    # if FLAGS.get('bn_calibration', False):
+    #     if not FLAGS.use_distributed:
+    #         logging.warning(
+    #             'Only GPU0 is used when calibration when use DataParallel')
+    #     with torch.no_grad():
+    #         _ = run_one_epoch(epoch,
+    #                           calib_loader,
+    #                           model_eval_wrapper,
+    #                           criterion,
+    #                           None,
+    #                           None,
+    #                           None,
+    #                           val_meters,
+    #                           max_iter=FLAGS.bn_calibration_steps,
+    #                           phase='bn_calibration')
+    #     if FLAGS.use_distributed:
+    #         udist.allreduce_bn(model_eval_wrapper)
 
     # val
     with torch.no_grad():
@@ -193,7 +193,7 @@ def validate(epoch, calib_loader, val_loader, criterion, val_meters,
                                      val_loader,
                                      model_eval_wrapper.module if FLAGS.single_gpu_test else model_eval_wrapper,
                                      FLAGS,
-                                     test_idx=[0,1,2])
+                                     test_idx=[1])
         else:
             results = run_one_epoch(epoch,
                                     val_loader,

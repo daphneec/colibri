@@ -1,6 +1,4 @@
-import torch.nn.functional as F
 import mmcv
-from mmseg.utils import resize
 from torch.distributed import get_world_size
 import shutil
 import tempfile
@@ -13,6 +11,12 @@ from utils import distributed as udist
 from utils.coco_dataset import flip_back
 from utils.config import DEVICE_MODE
 from mmseg.loss import accuracy, get_final_preds
+from mmseg.secure_utils import resize as resize_insecure
+
+import sys
+sys.path.append('/Users/eloise/workspace/HR-NAS/code/crypten_eloise/')
+import crypten_eloise as crypten
+import crypten_eloise.nn as cnn
 
 def collect_results_cpu(result_part, size, tmpdir=None):
     """Collect results with CPU."""
@@ -82,7 +86,7 @@ class SegVal:
         
         model.eval()
         dataset = loader.dataset
-        print("=====TEST image", dataset[1])
+        print("=====TEST image", dataset[test_idx])
         data_iterator = iter(loader)
 
         results = []
@@ -130,10 +134,10 @@ class SegVal:
         """Encode images with backbone and decode into a semantic segmentation
         map of the same size as input."""
         out = model(img)
-        out = resize(
+        out = resize_insecure(
             input=out,
             size=img.shape[2:],
-            mode='bilinear',
+            mode='nearest',
             align_corners=self.align_corners)
         return out
 
@@ -168,10 +172,10 @@ class SegVal:
         assert (count_mat == 0).sum() == 0
         preds = preds / count_mat
         if rescale:
-            preds = resize(
+            preds = resize_insecure(
                 preds,
                 size=img_meta[0]['ori_shape'][:2],
-                mode='bilinear',
+                mode='nearest',
                 align_corners=self.align_corners,
                 warning=False)
 
@@ -182,10 +186,10 @@ class SegVal:
 
         seg_logit = self.encode_decode(model, img, img_meta)
         if rescale:
-            seg_logit = resize(
+            seg_logit = resize_insecure(
                 seg_logit,
                 size=img_meta[0]['ori_shape'][:2],
-                mode='bilinear',
+                mode='nearest',
                 align_corners=self.align_corners,
                 warning=False)
 
@@ -214,7 +218,7 @@ class SegVal:
             seg_logit = self.slide_inference(model, img, img_meta, rescale)
         else:
             seg_logit = self.whole_inference(model, img, img_meta, rescale)
-        output = F.softmax(seg_logit, dim=1)
+        output = seg_logit.softmax(dim=1)
         flip = img_meta[0]['flip']
         flip_direction = img_meta[0]['flip_direction']
         if flip:
@@ -228,7 +232,14 @@ class SegVal:
 
     def simple_test(self, model, img, img_meta, rescale=True):
         """Simple test with single image."""
-        seg_logit = self.inference(model, img, img_meta, rescale)
+        # Here encrypt the model and input for Crypten
+        encrypted_model = model.encrypt()
+        encrypted_img = crypten.cryptensor(img)
+        # Here starts the timer
+        encrypted_seg_logit = self.inference(encrypted_model, encrypted_img, img_meta, rescale)
+        # Here ends the timer
+        # Here decrypt the inference result
+        seg_logit = encrypted_seg_logit.get_plain_text()
         seg_pred = seg_logit.argmax(dim=1)
         seg_pred = seg_pred.cpu().numpy()
         # unravel batch dim
