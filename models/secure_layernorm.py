@@ -13,11 +13,8 @@
 #   Implements a [`LayerNorm`] for Crypten in terms of [`BatchNorm`].
 #
 
-import sys
-sys.path.append('/Users/eloise/workspace/HR-NAS/code/crypten_eloise/')
 import crypten_eloise as crypten
 import crypten_eloise.nn as cnn
-
 # import crypten
 # import crypten.nn as cnn
 import torch

@@ -13,8 +13,6 @@ from utils.config import DEVICE_MODE
 from mmseg.loss import accuracy, get_final_preds
 from mmseg.secure_utils import resize as resize_insecure
 
-import sys
-sys.path.append('/Users/eloise/workspace/HR-NAS/code/crypten_eloise/')
 import crypten_eloise as crypten
 import crypten_eloise.nn as cnn
 
@@ -86,7 +84,11 @@ class SegVal:
         
         model.eval()
         dataset = loader.dataset
-        print("=====TEST image", dataset[test_idx])
+
+        # Print out the test image information
+        for i, idx in enumerate(test_idx):
+            print("=====TEST image", i+1 , dataset[idx])
+
         data_iterator = iter(loader)
 
         results = []

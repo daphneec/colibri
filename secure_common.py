@@ -8,11 +8,8 @@ import torch
 import torch.nn.functional as F
 import torch.distributed as dist
 
-import sys
-sys.path.append('/Users/eloise/workspace/HR-NAS/code/crypten_eloise/')
 import crypten_eloise as crypten
 import crypten_eloise.nn as cnn
-
 # import crypten
 # import crypten.nn as cnn
 from torch.utils.tensorboard import SummaryWriter

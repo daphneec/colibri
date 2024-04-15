@@ -48,7 +48,7 @@ profiling: [cpu]  # I'm sure the comment above is only for asthetic reasons
 log_interval: 100  # log every xxx iterations
 
 # pretrain, resume, test_only
-pretrained: ''
+pretrained: '/Users/eloise/workspace/HR-NAS/code/colibri/eloise_test/normal_imagenet_output_old/best_model.pt'
 resume: ''
 test_only: False
 

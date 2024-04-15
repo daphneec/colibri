@@ -18,7 +18,8 @@ from mmcv.parallel import collate
 
 
 class_dict = {}
-f = open('./data/map_clsloc.txt', 'r').readlines()
+# f = open('./data/map_clsloc.txt', 'r').readlines()
+f = open('/Users/eloise/workspace/HR-NAS/code/colibri/data/map_clsloc.txt', 'r').readlines()
 for line in f:
     name, id, describe = line.split()
     class_dict[name] = int(id) - 1
