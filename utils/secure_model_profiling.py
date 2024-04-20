@@ -4,8 +4,10 @@ import functools
 import numpy as np
 import time
 import torch
-import crypten
-import crypten.nn as cnn
+import crypten_eloise as crypten
+import crypten_eloise.nn as cnn
+# import crypten
+# import crypten.nn as cnn
 import models.secure_mobilenet_base as mb
 import models.secure_hrnet as hr
 import models.secure_hrnet_base as hrb

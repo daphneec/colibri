@@ -5,8 +5,9 @@ import time
 import torch
 
 import sys
-sys.path.append('/Users/eloise/workspace/HR-NAS/code/crypten_eloise/')
+sys.path.append('/home/eloise/CrypTen-eloise/')
 import crypten_eloise as crypten
+import crypten_eloise.communicator as comm
 # import crypten
 # import crypten.nn as cnn
 
@@ -26,6 +27,8 @@ from mmseg.secure_validation import SegVal, keypoint_val
 
 # STOP THE PRESSES: Fix `cnn.Module`s not having some of the functions we expect (but would support)
 fix_deps()
+SERVER = 0
+CLIENT = 1
 
 def run_one_epoch(epoch,
                   loader,
@@ -77,7 +80,7 @@ def run_one_epoch(epoch,
     return results
 
 
-def val():
+def val(rank):
     """Validation."""
     torch.backends.cudnn.benchmark = True
 
@@ -98,24 +101,25 @@ def val():
     # distributed
 
     # check pretrained
-    if FLAGS.pretrained:
-        checkpoint = torch.load(FLAGS.pretrained,
-                                map_location=lambda storage, loc: storage)
-        if ema:
-            checkpoint_ema = checkpoint['ema'].state_dict()
-            filtered_info = {key: val for key, val in checkpoint_ema['info'].items() if 'bns' not in key}
-            filtered_shadow = {key: val for key, val in checkpoint_ema['shadow'].items() if 'bns' not in key}
-            checkpoint_ema['info'] = filtered_info
-            checkpoint_ema['shadow'] = filtered_shadow
+    if rank == SERVER:
+        if FLAGS.pretrained:
+            checkpoint = torch.load(FLAGS.pretrained,
+                                    map_location=lambda storage, loc: storage)
+            if ema:
+                checkpoint_ema = checkpoint['ema'].state_dict()
+                filtered_info = {key: val for key, val in checkpoint_ema['info'].items() if 'bns' not in key}
+                filtered_shadow = {key: val for key, val in checkpoint_ema['shadow'].items() if 'bns' not in key}
+                checkpoint_ema['info'] = filtered_info
+                checkpoint_ema['shadow'] = filtered_shadow
 
-            ema.load_state_dict(checkpoint_ema)
-            ema.to(get_device(model))
-            # print("*******Test here:", ema.average_names())
-        
-        checkpoint_state_dict = {key: value for key, value in checkpoint['model'].state_dict().items() if 'bns' not in key}
+                ema.load_state_dict(checkpoint_ema)
+                ema.to(get_device(model))
+                # print("*******Test here:", ema.average_names())
+            
+            checkpoint_state_dict = {key: value for key, value in checkpoint['model'].state_dict().items() if 'bns' not in key}
 
-        model_wrapper.load_state_dict(checkpoint_state_dict, strict=False)
-        logging.info('Loaded model {}.'.format(FLAGS.pretrained))
+            model_wrapper.load_state_dict(checkpoint_state_dict, strict=False)
+            logging.info('Loaded model {}.'.format(FLAGS.pretrained))
 
     if udist.is_master():
         logging.info(model_wrapper)
@@ -123,7 +127,7 @@ def val():
     # data
     if FLAGS.dataset == 'cityscapes':
         (train_set, val_set, test_set) = seg_dataflow.cityscapes_datasets(FLAGS)
-        segval = SegVal(num_classes=19)
+        segval = SegVal(num_classes=19, rank=rank)
     elif FLAGS.dataset == 'ade20k':
         (train_set, val_set, test_set) = seg_dataflow.ade20k_datasets(FLAGS)
         segval = SegVal(num_classes=150)
@@ -220,8 +224,12 @@ def validate(epoch, calib_loader, val_loader, criterion, val_meters,
 def main():
     """Entry."""
     FLAGS.test_only = True
-    mc.setup_distributed()
     crypten.init()
+    mc.setup_distributed()
+    rank = comm.get().get_rank()
+    print("TEST udist world_size",udist.get_world_size())
+    print(f"TEST comm Rank is {rank}")
+    print(f"TEST comm world_size is {comm.get().get_world_size()}")
     if udist.is_master():
         FLAGS.log_dir = '{}/{}'.format(FLAGS.log_dir,
                                        time.strftime("%Y%m%d-%H%M%S-eval"))
@@ -232,7 +240,7 @@ def main():
 
     set_random_seed(FLAGS.get('random_seed', 0))
     with mc.SummaryWriterManager():
-        val()
+        val(rank)
 
 
 if __name__ == "__main__":

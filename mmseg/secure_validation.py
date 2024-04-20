@@ -1,3 +1,4 @@
+import time
 import mmcv
 from torch.distributed import get_world_size
 import shutil
@@ -15,6 +16,9 @@ from mmseg.secure_utils import resize as resize_insecure
 
 import crypten_eloise as crypten
 import crypten_eloise.nn as cnn
+
+SERVER = 0
+CLIENT = 1
 
 def collect_results_cpu(result_part, size, tmpdir=None):
     """Collect results with CPU."""
@@ -67,7 +71,7 @@ class SegVal:
     which could be dumped during inference.
     """
 
-    def __init__(self, num_classes=19):
+    def __init__(self, num_classes=19, rank):
         super(SegVal, self).__init__()
 
         self.align_corners = False
@@ -75,6 +79,7 @@ class SegVal:
         self.crop_size = (769, 769)
         self.num_classes = num_classes
         self.mode = 'whole'
+        self.rank = rank
 
     def run(self, epoch, loader, model, FLAGS, test_idx=None):
         """
@@ -87,7 +92,7 @@ class SegVal:
 
         # Print out the test image information
         for i, idx in enumerate(test_idx):
-            print("=====TEST image", i+1 , dataset[idx])
+            print("*****Test_image", i+1 , dataset[idx])
 
         data_iterator = iter(loader)
 
@@ -235,11 +240,13 @@ class SegVal:
     def simple_test(self, model, img, img_meta, rescale=True):
         """Simple test with single image."""
         # Here encrypt the model and input for Crypten
-        encrypted_model = model.encrypt()
+        encrypted_model = model.encrypt(src = SERVER)
         encrypted_img = crypten.cryptensor(img)
         # Here starts the timer
+        start_time = time.time()
         encrypted_seg_logit = self.inference(encrypted_model, encrypted_img, img_meta, rescale)
-        # Here ends the timer
+        end_time = time.time()
+        print(f"\n*****Time_used for secure inference: {(end_time-start_time)*1000} ms")
         # Here decrypt the inference result
         seg_logit = encrypted_seg_logit.get_plain_text()
         seg_pred = seg_logit.argmax(dim=1)

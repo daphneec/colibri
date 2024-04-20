@@ -41,7 +41,7 @@ profiling: [cpu]  # on GPU only
 
 
 # pretrain, resume, test_only
-pretrained: '/Users/eloise/workspace/HR-NAS/code/colibri/eloise_test/normal_cityscapes_transformers/best_model.pt'
+pretrained: '/home/eloise/colibri-eloise/eloise_test/normal_cityscapes_transformers/best_model.pt'
 resume: ''
 test_only: False
 
