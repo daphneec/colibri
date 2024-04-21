@@ -127,7 +127,7 @@ def val(rank):
     # data
     if FLAGS.dataset == 'cityscapes':
         (train_set, val_set, test_set) = seg_dataflow.cityscapes_datasets(FLAGS)
-        segval = SegVal(num_classes=19, rank=rank)
+        segval = SegVal(num_classes=19)
     elif FLAGS.dataset == 'ade20k':
         (train_set, val_set, test_set) = seg_dataflow.ade20k_datasets(FLAGS)
         segval = SegVal(num_classes=150)

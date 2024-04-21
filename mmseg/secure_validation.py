@@ -71,7 +71,7 @@ class SegVal:
     which could be dumped during inference.
     """
 
-    def __init__(self, num_classes=19, rank):
+    def __init__(self, num_classes=19):
         super(SegVal, self).__init__()
 
         self.align_corners = False
@@ -79,7 +79,7 @@ class SegVal:
         self.crop_size = (769, 769)
         self.num_classes = num_classes
         self.mode = 'whole'
-        self.rank = rank
+        self.rank = int(os.environ['RANK'])
 
     def run(self, epoch, loader, model, FLAGS, test_idx=None):
         """
