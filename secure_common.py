@@ -241,7 +241,9 @@ def get_model():
         if udist.is_master():
             logging.info('Init model by: {}'.format(init_method))
     if DEVICE_MODE == "cpu":
-        if FLAGS.use_distributed:
+        if FLAGS.test_only:
+            model_wrapper = model # No need data parallel, crypten would handle
+        elif FLAGS.use_distributed:
             model_wrapper = udist.AllReduceDistributedDataParallel(model)
         else:
             # model_wrapper = torch.nn.DataParallel(model)
@@ -273,7 +275,9 @@ def get_ema_model(ema, model_wrapper):
     """
     if ema is not None:
         model_eval_wrapper = copy.deepcopy(model_wrapper)
-        model_eval = unwrap_model(model_eval_wrapper)
+        if not FLAGS.test_only:
+            model_eval = unwrap_model(model_eval_wrapper)
+        else: model_eval = model_eval_wrapper
         names = ema.average_names()
         params = get_params_by_name(model_eval, names)
         for name, param in zip(names, params):

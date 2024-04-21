@@ -16,6 +16,7 @@ from mmseg.secure_utils import resize as resize_insecure
 
 import crypten_eloise as crypten
 import crypten_eloise.nn as cnn
+import crypten_eloise.communicator as comm
 
 SERVER = 0
 CLIENT = 1
@@ -81,7 +82,7 @@ class SegVal:
         self.mode = 'whole'
         self.rank = int(os.environ['RANK'])
 
-    def run(self, epoch, loader, model, FLAGS, test_idx=None):
+    def run(self, epoch, loader, model, FLAGS, test_name_list=None):
         """
         Args:
         test_idx (list[int]): List of test image indices. Defaults to None, meaning testing all data.
@@ -89,24 +90,24 @@ class SegVal:
         
         model.eval()
         dataset = loader.dataset
-
-        # Print out the test image information
-        for i, idx in enumerate(test_idx):
-            print("*****Test_image", i+1 , dataset[idx])
-
         data_iterator = iter(loader)
 
         results = []
         if udist.is_master():
-            if test_idx:
-                prog_bar = mmcv.ProgressBar(len(test_idx))
+            if test_name_list:
+                prog_bar = mmcv.ProgressBar(len(test_name_list))
             else:
                 prog_bar = mmcv.ProgressBar(len(dataset))
+
+        test_idx = []
         for batch_idx, input in enumerate(data_iterator):
-            if test_idx and (batch_idx not in test_idx):
-                continue
-            imgs = input['img']
             img_metas = input['img_metas'][0].data
+            if test_name_list and (img_metas[0][0]['filename'] not in test_name_list):
+                continue
+            
+            test_idx.append(batch_idx)
+            print("*****Test_image", len(test_idx) , img_metas[0][0])
+            imgs = input['img']
             assert len(imgs) == len(img_metas)
             for img_meta in img_metas:
                 ori_shapes = [_['ori_shape'] for _ in img_meta]
@@ -241,7 +242,11 @@ class SegVal:
         """Simple test with single image."""
         # Here encrypt the model and input for Crypten
         encrypted_model = model.encrypt(src = SERVER)
-        encrypted_img = crypten.cryptensor(img)
+        if comm.get().get_world_size() > 1:
+            encrypted_img = crypten.cryptensor(img, src = CLIENT)
+            print("*****Model and image have encrypted in different machines.")
+        else:
+            encrypted_img = crypten.cryptensor(img)
         # Here starts the timer
         start_time = time.time()
         encrypted_seg_logit = self.inference(encrypted_model, encrypted_img, img_meta, rescale)

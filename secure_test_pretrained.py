@@ -207,7 +207,7 @@ def validate(epoch, calib_loader, val_loader, criterion, val_meters,
                                      val_loader,
                                      model_eval_wrapper.module if FLAGS.single_gpu_test else model_eval_wrapper,
                                      FLAGS,
-                                     test_idx=[1])
+                                     test_name_list=['./data/cityscapes/leftImg8bit/val/munster/munster_000127_000019_leftImg8bit.png'])
         else:
             results = run_one_epoch(epoch,
                                     val_loader,
