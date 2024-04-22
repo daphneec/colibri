@@ -8,8 +8,11 @@ from typing import Optional, Union
 import numpy as np
 import torch
 from torch import Tensor
-import crypten
-from crypten import nn as cnn, CrypTensor
+
+import crypten_eloise as crypten
+from crypten_eloise import nn as cnn, CrypTensor
+# import crypten
+# from crypten import nn as cnn, CrypTensor
 
 from models.secure_multi_head_attention import MultiHeadAttention
 from models.secure_layernorm import LayerNorm

@@ -1,9 +1,12 @@
 import math
-import crypten
 import torch
 import logging
-# from torch.optim.optimizer import Optimizer
-from crypten.optim.optimizer import Optimizer
+
+import crypten_eloise as crypten
+from crypten_eloise.optim.optimizer import Optimizer
+# import crypten
+# import crypten.nn as cnn
+
 from utils.common import index_tensor_in
 from utils.common import check_tensor_in
 

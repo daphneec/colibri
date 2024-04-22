@@ -7,8 +7,11 @@ import os
 import torch
 import torch.nn.functional as F
 import torch.distributed as dist
-import crypten
-import crypten.nn as cnn
+
+import crypten_eloise as crypten
+import crypten_eloise.nn as cnn
+# import crypten
+# import crypten.nn as cnn
 from torch.utils.tensorboard import SummaryWriter
 
 from utils import secure_distributed as udist
@@ -278,7 +281,9 @@ def get_model():
         if udist.is_master():
             logging.info('Init model by: {}'.format(init_method))
     if DEVICE_MODE == "cpu":
-        if FLAGS.use_distributed:
+        if FLAGS.test_only:
+            model_wrapper = model # No need data parallel, crypten would handle
+        elif FLAGS.use_distributed:
             model_wrapper = udist.AllReduceDistributedDataParallel(model)
         else:
             # model_wrapper = torch.nn.DataParallel(model)
@@ -310,7 +315,9 @@ def get_ema_model(ema, model_wrapper):
     """
     if ema is not None:
         model_eval_wrapper = copy.deepcopy(model_wrapper)
-        model_eval = unwrap_model(model_eval_wrapper)
+        if not FLAGS.test_only:
+            model_eval = unwrap_model(model_eval_wrapper)
+        else: model_eval = model_eval_wrapper
         names = ema.average_names()
         params = get_params_by_name(model_eval, names)
         for name, param in zip(names, params):
@@ -336,7 +343,8 @@ def setup_distributed(num_images=None):
     """Setup distributed related parameters."""
     # init distributed
     if FLAGS.use_distributed:
-        udist.init_dist(backend="nccl" if DEVICE_MODE == "gpu" else "gloo")
+        if not FLAGS.test_only: # Only init here if Crypten is not init
+            udist.init_dist(backend="nccl" if DEVICE_MODE == "gpu" else "gloo")
         FLAGS.batch_size = udist.get_world_size() * FLAGS.per_gpu_batch_size
         FLAGS._loader_batch_size = FLAGS.per_gpu_batch_size
         if FLAGS.bn_calibration:
