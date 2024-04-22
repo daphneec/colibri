@@ -16,10 +16,8 @@ import os
 import sys
 from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
 
-import crypten_eloise as crypten
-import crypten_eloise.nn as cnn
-# import crypten
-# import crypten.nn as cnn
+import crypten
+import crypten.nn as cnn
 import torch
 import torch.nn.functional as F
 

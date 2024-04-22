@@ -14,8 +14,9 @@ from utils import distributed as udist
 
 __all__ = ['HighResolutionNet']
 
-# checkpoint_kwparams = None
-checkpoint_kwparams = json.load(open('/home/eloise/colibri-eloise/eloise_test/normal_cityscapes_transformers/best_model.json'))
+checkpoint_kwparams = None
+# checkpoint_kwparams = json.load(open('checkpoint.json'))
+
 
 class InvertedResidual(InvertedResidualChannels):
 
