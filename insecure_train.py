@@ -82,7 +82,8 @@ def shrink_model(model_wrapper,
                        verbose=False,
                        use_cuda=DEVICE_MODE == "gpu")
     if udist.is_master():
-        logging.info('Model Shrink to FLOPS: {}'.format(model.n_macs))
+        # logging.info('Model Shrink to FLOPS: {}'.format(model.n_macs))
+        logging.info('Model Shrink to NSECS: {}'.format(model.n_seconds))
         logging.info('Current model: {}'.format(mb.output_network(model)))
 
 
@@ -110,15 +111,15 @@ def summary_bn(model, prefix):
 
 
 @udist.master_only
-def log_pruned_info(model, flops_pruned, infos, prune_threshold):
+def log_pruned_info(model, nsecs_pruned, infos, prune_threshold):
     """Log pruning-related information."""
     if udist.is_master():
-        logging.info('Flops threshold: {}'.format(prune_threshold))
+        logging.info('nsec threshold: {}'.format(prune_threshold))
         for info in infos:
             if FLAGS.prune_params['logging_verbose']:
                 logging.info(
-                    'layer {}, total channel: {}, pruned channel: {}, flops'
-                    ' total: {}, flops pruned: {}, pruned rate: {:.3f}'.format(
+                    'layer {}, total channel: {}, pruned channel: {}, nsecs'
+                    ' total: {}, nsecs pruned: {}, pruned rate: {:.3f}'.format(
                         *info))
             mc.summary_writer.add_scalar(
                 'prune_ratio/{}/{}'.format(prune_threshold, info[0]), info[-1],
@@ -126,15 +127,15 @@ def log_pruned_info(model, flops_pruned, infos, prune_threshold):
         logging.info('Pruned model: {}'.format(
             iprune.output_searched_network(model, infos, FLAGS.prune_params)))
 
-    #flops_remain = #model.n_macs - flops_pruned
+    #nsecs_remain = #model.n_macs - nsecs_pruned
     if udist.is_master():
         logging.info(
-            'Prune threshold: {}, flops pruned: {}'.format(
-                prune_threshold, flops_pruned))
-            #'Prune threshold: {}, flops pruned: {}, flops remain: {}'.format(
-            #    prune_threshold, flops_pruned, flops_remain))
-        mc.summary_writer.add_scalar('prune/flops/{}'.format(prune_threshold),
-                                     FLAGS._global_step) #flops_remain, FLAGS._global_step)
+            'Prune threshold: {}, nsecs pruned: {}'.format(
+                prune_threshold, nsecs_pruned))
+            #'Prune threshold: {}, nsecs pruned: {}, nsecs remain: {}'.format(
+            #    prune_threshold, nsecs_pruned, nsecs_remain))
+        mc.summary_writer.add_scalar('prune/nsecs/{}'.format(prune_threshold),
+                                     FLAGS._global_step) #nsecs_remain, FLAGS._global_step)
 
 
 def run_one_epoch(epoch,
@@ -444,7 +445,7 @@ def train_val_test():
 
     if not FLAGS.resume and udist.is_master():
         logging.info(model_wrapper)
-    assert FLAGS.profiling, '`m.macs` is used for calculating penalty'
+    assert FLAGS.profiling, '`m.nsecs` is used for calculating penalty'
     # if udist.is_master():
     #     model.apply(lambda m: print(m))
     if FLAGS.profiling:
@@ -521,11 +522,11 @@ def train_val_test():
                 masks = iprune.cal_mask_network_slimming_by_threshold(
                     get_prune_weights(model_eval_wrapper), prune_threshold)  # get mask for all bn weights (depth-wise)
                 FLAGS._bn_to_prune.add_info_list('mask', masks)
-                flops_pruned, infos = iprune.cal_pruned_flops(FLAGS._bn_to_prune)
-                log_pruned_info(mc.unwrap_model(model_eval_wrapper), flops_pruned,
+                nsecs_pruned, infos = iprune.cal_pruned_nsecs(FLAGS._bn_to_prune)
+                log_pruned_info(mc.unwrap_model(model_eval_wrapper), nsecs_pruned,
                                 infos, prune_threshold)
                 if not FLAGS.distill:
-                    if flops_pruned >= FLAGS.model_shrink_delta_flops \
+                    if nsecs_pruned >= FLAGS.model_shrink_delta_flops \
                             or epoch == FLAGS.num_epochs - 1:
                         ema_only = (epoch == FLAGS.num_epochs - 1)
                         shrink_model(model_wrapper, ema, optimizer, FLAGS._bn_to_prune,
