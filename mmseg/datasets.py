@@ -162,8 +162,8 @@ class CityscapesDataset(Dataset):
             idx (int): Index of data.
 
         Returns:
-            dict: Testing data after pipeline with new keys intorduced by
-                piepline.
+            dict: Testing data after pipeline with new keys introduced by
+                pipeline.
         """
 
         img_info = self.img_infos[idx]
@@ -259,7 +259,8 @@ class CityscapesDataset(Dataset):
                  results,
                  metric='mIoU',
                  logger=None,
-                 imgfile_prefix=None):
+                 imgfile_prefix=None,
+                 test_idx=None):
         """Evaluation in Cityscapes/default protocol.
 
         Args:
@@ -276,6 +277,7 @@ class CityscapesDataset(Dataset):
                 the image name of cityscapes. If not specified, a temp file
                 will be created for evaluation.
                 Default: None.
+            test_idx (list[int]): List of test image indices. Defaults to None, meaning testing all data.
 
         Returns:
             dict[str, float]: Cityscapes/default metrics.
@@ -289,7 +291,7 @@ class CityscapesDataset(Dataset):
             metrics.remove('cityscapes')
         if len(metrics) > 0:
             eval_results.update(
-                self.eval(results, metrics, logger))
+                self.eval(results, metrics, logger, test_idx=test_idx))
 
         return eval_results
 
@@ -309,7 +311,7 @@ class CityscapesDataset(Dataset):
 
         return gt_seg_maps
 
-    def eval(self, results, metric='mIoU', logger=None):
+    def eval(self, results, metric='mIoU', logger=None, test_idx=None):
         """Evaluate the dataset.
 
         Args:
@@ -317,6 +319,7 @@ class CityscapesDataset(Dataset):
             metric (str | list[str]): Metrics to be evaluated.
             logger (logging.Logger | None | str): Logger used for printing
                 related information during evaluation. Default: None.
+            test_idx (list[int]): List of test image indices. Defaults to None, meaning testing all data.
 
         Returns:
             dict[str, float]: Default metrics.
@@ -338,7 +341,7 @@ class CityscapesDataset(Dataset):
             num_classes = len(self.CLASSES)
 
         all_acc, acc, iou = mean_iou(
-            results, gt_seg_maps, num_classes, ignore_index=self.ignore_index)
+            results, gt_seg_maps, num_classes, ignore_index=self.ignore_index, test_idx=test_idx)
         summary_str = ''
         summary_str += 'per class results:\n'
 

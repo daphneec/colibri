@@ -5,8 +5,12 @@ import os
 import functools
 
 import torch
-import crypten
-import crypten.nn as cnn
+
+import crypten_eloise as crypten
+import crypten_eloise.nn as cnn
+# import crypten
+# import crypten.nn as cnn
+
 import torch.distributed as dist
 from torch.nn.parallel.scatter_gather import scatter_kwargs
 from torch._utils import _flatten_dense_tensors

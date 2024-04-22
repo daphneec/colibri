@@ -1,0 +1,8 @@
+export WORLD_SIZE=2
+export RENDEZVOUS=env://
+export MASTER_ADDR=145.100.135.111
+export MASTER_PORT=29500
+export RANK=0
+export LOCAL_RANK=0
+export GLOO_SOCKET_IFNAME=ens3
+export OMP_NUM_THREADS=1

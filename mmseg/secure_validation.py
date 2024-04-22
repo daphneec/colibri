@@ -1,7 +1,5 @@
 import time
-import torch.nn.functional as F
 import mmcv
-from mmseg.utils import resize
 from torch.distributed import get_world_size
 import shutil
 import tempfile
@@ -14,6 +12,14 @@ from utils import distributed as udist
 from utils.coco_dataset import flip_back
 from utils.config import DEVICE_MODE
 from mmseg.loss import accuracy, get_final_preds
+from mmseg.secure_utils import resize as resize_insecure
+
+import crypten_eloise as crypten
+import crypten_eloise.nn as cnn
+import crypten_eloise.communicator as comm
+
+SERVER = 0
+CLIENT = 1
 
 def collect_results_cpu(result_part, size, tmpdir=None):
     """Collect results with CPU."""
@@ -74,8 +80,9 @@ class SegVal:
         self.crop_size = (769, 769)
         self.num_classes = num_classes
         self.mode = 'whole'
+        self.rank = int(os.environ['RANK'])
 
-    def run(self, epoch, loader, model, FLAGS, test_idx=None):
+    def run(self, epoch, loader, model, FLAGS, test_name_list=None):
         """
         Args:
         test_idx (list[int]): List of test image indices. Defaults to None, meaning testing all data.
@@ -83,25 +90,24 @@ class SegVal:
         
         model.eval()
         dataset = loader.dataset
-
-        # Print out the test image information
-        for i, idx in enumerate(test_idx):
-            print("*****Test_image", i+1 , dataset[idx])
-
         data_iterator = iter(loader)
 
         results = []
         if udist.is_master():
-            if test_idx:
-                prog_bar = mmcv.ProgressBar(len(test_idx))
+            if test_name_list:
+                prog_bar = mmcv.ProgressBar(len(test_name_list))
             else:
                 prog_bar = mmcv.ProgressBar(len(dataset))
+
+        test_idx = []
         for batch_idx, input in enumerate(data_iterator):
-            if test_idx and (batch_idx not in test_idx):
-                continue
-            # print("batch_idx here:", batch_idx)
-            imgs = input['img']
             img_metas = input['img_metas'][0].data
+            if test_name_list and (img_metas[0][0]['filename'] not in test_name_list):
+                continue
+            
+            test_idx.append(batch_idx)
+            print("*****Test_image", len(test_idx) , img_metas[0][0])
+            imgs = input['img']
             assert len(imgs) == len(img_metas)
             for img_meta in img_metas:
                 ori_shapes = [_['ori_shape'] for _ in img_meta]
@@ -136,10 +142,10 @@ class SegVal:
         """Encode images with backbone and decode into a semantic segmentation
         map of the same size as input."""
         out = model(img)
-        out = resize(
+        out = resize_insecure(
             input=out,
             size=img.shape[2:],
-            mode='bilinear',
+            mode='nearest',
             align_corners=self.align_corners)
         return out
 
@@ -174,10 +180,10 @@ class SegVal:
         assert (count_mat == 0).sum() == 0
         preds = preds / count_mat
         if rescale:
-            preds = resize(
+            preds = resize_insecure(
                 preds,
                 size=img_meta[0]['ori_shape'][:2],
-                mode='bilinear',
+                mode='nearest',
                 align_corners=self.align_corners,
                 warning=False)
 
@@ -188,10 +194,10 @@ class SegVal:
 
         seg_logit = self.encode_decode(model, img, img_meta)
         if rescale:
-            seg_logit = resize(
+            seg_logit = resize_insecure(
                 seg_logit,
                 size=img_meta[0]['ori_shape'][:2],
-                mode='bilinear',
+                mode='nearest',
                 align_corners=self.align_corners,
                 warning=False)
 
@@ -220,7 +226,7 @@ class SegVal:
             seg_logit = self.slide_inference(model, img, img_meta, rescale)
         else:
             seg_logit = self.whole_inference(model, img, img_meta, rescale)
-        output = F.softmax(seg_logit, dim=1)
+        output = seg_logit.softmax(dim=1)
         flip = img_meta[0]['flip']
         flip_direction = img_meta[0]['flip_direction']
         if flip:
@@ -234,11 +240,20 @@ class SegVal:
 
     def simple_test(self, model, img, img_meta, rescale=True):
         """Simple test with single image."""
+        # Here encrypt the model and input for Crypten
+        encrypted_model = model.encrypt(src = SERVER)
+        if comm.get().get_world_size() > 1:
+            encrypted_img = crypten.cryptensor(img, src = CLIENT)
+            print("*****Model and image have encrypted in different machines.")
+        else:
+            encrypted_img = crypten.cryptensor(img)
         # Here starts the timer
         start_time = time.time()
-        seg_logit = self.inference(model, img, img_meta, rescale)
+        encrypted_seg_logit = self.inference(encrypted_model, encrypted_img, img_meta, rescale)
         end_time = time.time()
-        print(f"\n*****Time_used for non-secure inference: {(end_time-start_time)*1000} ms")
+        print(f"\n*****Time_used for secure inference: {(end_time-start_time)*1000} ms")
+        # Here decrypt the inference result
+        seg_logit = encrypted_seg_logit.get_plain_text()
         seg_pred = seg_logit.argmax(dim=1)
         seg_pred = seg_pred.cpu().numpy()
         # unravel batch dim

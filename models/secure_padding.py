@@ -15,7 +15,8 @@
 
 import typing
 
-import crypten.nn as cnn
+import crypten_eloise.nn as cnn
+# import crypten.nn as cnn
 
 
 ##### LIBRARY #####

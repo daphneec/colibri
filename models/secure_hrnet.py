@@ -2,22 +2,26 @@ import numbers
 import collections
 import logging
 import torch
-import crypten
-import crypten.nn as cnn
+
+import crypten_eloise as crypten
+import crypten_eloise.nn as cnn
+# import crypten
+# import crypten.nn as cnn
+
 from models.secure_mobilenet_base import _make_divisible
 from models.secure_mobilenet_base import ConvBNReLU
 from models.secure_mobilenet_base import get_active_fn
 from models.secure_mobilenet_base import InvertedResidualChannels, InvertedResidualChannelsFused
 from models.secure_upsample import UpsampleNearest
-from mmseg.secure_utils import resize
-from mmseg.utils import resize as resize_insecure
+from mmseg.secure_utils import resize as resize_insecure
 import json
 from utils import distributed as udist
 
 __all__ = ['HighResolutionNet']
 
-checkpoint_kwparams = None
+# checkpoint_kwparams = None
 # checkpoint_kwparams = json.load(open('checkpoint.json'))
+checkpoint_kwparams = json.load(open('/Users/eloise/workspace/HR-NAS/code/colibri/eloise_test/normal_cityscapes_transformers/best_model.json'))
 
 
 class InvertedResidual(InvertedResidualChannels):
@@ -350,7 +354,7 @@ class FuseModule(cnn.Module):
                                 y = y + resize_insecure(
                                     self.fuse_layers[i][j](x[j]),
                                     size=y.shape[2:],
-                                    mode='bilinear',
+                                    mode='nearest',
                                     align_corners=False)
                             else:  # hr_format, None
                                 y = y + x[j]
@@ -429,9 +433,9 @@ class HeadModule(cnn.Module):
             if self.incre_modules:
                 for i in range(len(x_list)):
                     x_list[i] = self.incre_modules[i](x_list[i])
-            x_incre = [resize(input=x,
+            x_incre = [resize_insecure(input=x,
                               size=x_list[-1].shape[2:],
-                              mode='bilinear',
+                              mode='nearest',
                               align_corners=False) for x in x_list]
             x = crypten.cat(x_incre, dim=1)
         else:
@@ -672,10 +676,11 @@ class HighResolutionNet(cnn.Module):
         """
 
         upsampled_inputs = [
-            resize(
+            resize_insecure(
                 input=x,
                 size=inputs[0].shape[2:],
-                mode='bilinear',
+                # mode='bilinear',
+                mode='nearest',
                 align_corners=self.align_corners) for x in inputs
         ]
         inputs = crypten.cat(upsampled_inputs, dim=1)

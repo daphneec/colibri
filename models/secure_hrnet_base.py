@@ -3,7 +3,10 @@ from __future__ import division
 from __future__ import print_function
 
 import torch
-import crypten.nn as cnn
+
+import crypten_eloise.nn as cnn
+# import crypten.nn as cnn
+
 import collections
 import numbers
 from models.secure_mobilenet_base import _make_divisible

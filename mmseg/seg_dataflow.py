@@ -39,6 +39,7 @@ def cityscapes_datasets(FLAGS):
     ]
     train_pipeline = Compose(train_pipeline)
     val_pipeline = Compose(test_pipeline)
+    test_pipeline = Compose(test_pipeline)
 
     train_set = CityscapesDataset(data_root=FLAGS.data_root,
                                   img_dir='leftImg8bit/train',
@@ -50,7 +51,14 @@ def cityscapes_datasets(FLAGS):
                                 ann_dir='gtFine/val',
                                 pipeline=val_pipeline,
                                 test_mode=True)
-    return train_set, val_set, None
+    
+    test_set = CityscapesDataset(data_root=FLAGS.data_root,
+                                img_dir='leftImg8bit/test',
+                                ann_dir='gtFine/test',
+                                pipeline=test_pipeline,
+                                test_mode=True)
+    
+    return train_set, val_set, test_set
 
 
 def ade20k_datasets(FLAGS):
