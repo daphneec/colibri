@@ -33,6 +33,7 @@ class PruneInfoTransformer(object):
 
     def update_penalty(self):
         for item in self._info.values():
+            print("### START UPDATE PENALTY (DAPHNEE'S VOICE) ###")
             print(f"Number of seconds: {item['nsecs']}")
             print(f"Original thing to subtract: {2 * (item['initial_channels'] ** 2) * 64}")
             # avg_nsecs = (item['nsecs'] - 2 * (item['initial_channels'] ** 2) * 64) / item['initial_channels']
@@ -46,6 +47,7 @@ class PruneInfoTransformer(object):
             print(f"New unique thing: '{uniq_nsecs}'")
             item['penalty'] = (avg_nsecs + uniq_nsecs) / self.norm_factor
             print(f"Penalty: '{item['penalty']}'")
+            print("### END UPDATE PENALTY ###")
 
 
     @property
