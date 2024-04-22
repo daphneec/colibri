@@ -163,7 +163,7 @@ def run_one_epoch(epoch,
     if train:
         model.train()
     else:
-        #possibly encrypt here so model.eval() is deleted and replaced with alice and bob encrypted exchange with crypten.init()
+        #possibly encrypt here so model.eval() is deleted and replaced with alice and bob encrypted exhcange with crypten.init()
         model.eval()
 
     if phase == 'bn_calibration':

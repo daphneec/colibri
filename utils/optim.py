@@ -123,7 +123,7 @@ class ExponentialMovingAverage(nn.Module):
         self._info = copy.deepcopy(state_dict['info'])
 
     def to(self, *args, **kwargs):
-        device, dtype, non_blocking, _ = torch._C._nn._parse_to(*args, **kwargs)
+        device, dtype, non_blocking = torch._C._nn._parse_to(*args, **kwargs)
         for k in list(self._shadow.keys()):
             v = self._shadow[k]
             self._shadow[k] = v.to(device,

@@ -1,4 +1,3 @@
-import time
 import torch.nn.functional as F
 import mmcv
 from mmseg.utils import resize
@@ -75,31 +74,15 @@ class SegVal:
         self.num_classes = num_classes
         self.mode = 'whole'
 
-    def run(self, epoch, loader, model, FLAGS, test_idx=None):
-        """
-        Args:
-        test_idx (list[int]): List of test image indices. Defaults to None, meaning testing all data.
-        """
-        
+    def run(self, epoch, loader, model, FLAGS):
         model.eval()
         dataset = loader.dataset
-
-        # Print out the test image information
-        for i, idx in enumerate(test_idx):
-            print("*****Test_image", i+1 , dataset[idx])
-
         data_iterator = iter(loader)
 
         results = []
         if udist.is_master():
-            if test_idx:
-                prog_bar = mmcv.ProgressBar(len(test_idx))
-            else:
-                prog_bar = mmcv.ProgressBar(len(dataset))
+            prog_bar = mmcv.ProgressBar(len(dataset))
         for batch_idx, input in enumerate(data_iterator):
-            if test_idx and (batch_idx not in test_idx):
-                continue
-            # print("batch_idx here:", batch_idx)
             imgs = input['img']
             img_metas = input['img_metas'][0].data
             assert len(imgs) == len(img_metas)
@@ -127,7 +110,7 @@ class SegVal:
             results = collect_results_cpu(results, len(dataset))
         performance = None
         if udist.is_master():
-            performance = dataset.evaluate(results, test_idx=test_idx)
+            performance = dataset.evaluate(results)
         dist.barrier()
         # dist.broadcast(performance, 0)
         return performance
@@ -234,11 +217,7 @@ class SegVal:
 
     def simple_test(self, model, img, img_meta, rescale=True):
         """Simple test with single image."""
-        # Here starts the timer
-        start_time = time.time()
         seg_logit = self.inference(model, img, img_meta, rescale)
-        end_time = time.time()
-        print(f"\n*****Time_used for non-secure inference: {(end_time-start_time)*1000} ms")
         seg_pred = seg_logit.argmax(dim=1)
         seg_pred = seg_pred.cpu().numpy()
         # unravel batch dim
