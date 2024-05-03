@@ -149,7 +149,6 @@ def get_bn_to_prune(model, flags, verbose=True):
         channels_transformer = []
         for name, m in model.get_named_block_list().items():
             if isinstance(m, mb.InvertedResidualChannels):
-                # only the first block could be non expand
                 if bn_prune_filter == 'expansion_only_skip_expand1' and not m.expand:
                     continue
 
@@ -157,7 +156,6 @@ def get_bn_to_prune(model, flags, verbose=True):
                         m.ops,
                         m.get_named_depthwise_bn(prefix=name).items()):
                     hidden_channel = bn.weight.numel()
-                    # print(hidden_channel)
                     penalties.append(
                         (hidden_channel, op.n_macs / hidden_channel))
                     weights.append('{}.weight'.format(bn_name))
@@ -185,7 +183,6 @@ def get_bn_to_prune(model, flags, verbose=True):
                                       ]) / (numel_total + 1e-5)
         penalties = [val / penalty_normalizer for (_, val) in penalties]
     elif bn_prune_filter in ['equal_penalty_skip_expand1']:
-        # baseline for table 2, network slimming like
         weights = []
         penalties = []
         per_channel_flops = []
@@ -202,23 +199,18 @@ def get_bn_to_prune(model, flags, verbose=True):
                     penalties.append(1)
                     per_channel_flops.append(op.n_macs / hidden_channel)
     elif bn_prune_filter is None:
-        # do nothing
         weights, penalties = [], []
         per_channel_flops = []
     else:
         raise NotImplementedError()
-
     prune_info = PruneInfo(weights, penalties)
     prune_info.add_info_list('per_channel_flops', per_channel_flops)
-
     if verbose and udist.is_master():
         for name, penal in zip(prune_info.weight, prune_info.penalty):
             logging.info('{} penalty: {}'.format(name, penal))
-
     all_params_keys = [key for key, val in model.named_parameters()]
     for name_weight in prune_info.weight:
         assert name_weight in all_params_keys
-
     if flags.use_transformer:
         prune_info_transformer = PruneInfoTransformer(weights_transformer,
                                                       penalties_transformer,
@@ -231,7 +223,6 @@ def get_bn_to_prune(model, flags, verbose=True):
         if verbose and udist.is_master():
             for name, penal in zip(prune_info_transformer.weight, prune_info_transformer.penalty):
                 logging.info('{} penalty: {}'.format(name, penal))
-
         all_params_keys_transformer = [key for key, val in model.named_parameters()]
         for name_weight in prune_info_transformer.weight:
             assert name_weight in all_params_keys_transformer
@@ -249,29 +240,6 @@ def cal_bn_l1_loss(bn_weights, penalties, rho):
         loss += rho * penal * weight.abs().sum()
     return loss
 
-
-### UNUSED ###
-# def cal_mask_network_slimming_by_flops(weights,
-#                                        prune_info,
-#                                        flops_to_prune,
-#                                        incremental=False):
-#     """Calculate mask alive atomic blocks given FLOPS target."""
-#     bn_weights_abs = [weight.detach().abs() for weight in weights]
-#     weights = torch.cat([weight for weight in bn_weights_abs])
-#     weights_sorted, indices = torch.sort(weights)
-#     flops = torch.cat([
-#         torch.full_like(weight, per_channel_flop)
-#         for weight, per_channel_flop in zip(
-#             bn_weights_abs, prune_info.get_info_list('per_channel_flops'))
-#     ])[indices]
-#     idx_threshold = torch.nonzero(
-#         torch.cumsum(flops, 0) > flops_to_prune)[0].item()
-#     threshold = weights_sorted[idx_threshold].item()
-#     mask = [weight > threshold for weight in bn_weights_abs]
-#     return mask, threshold
-##############
-
-
 # ENTRYPOINT secure_train.py #527
 def cal_mask_network_slimming_by_threshold(weights, threshold):
     """Calculate mask alive atomic blocks given threshold."""
@@ -279,7 +247,6 @@ def cal_mask_network_slimming_by_threshold(weights, threshold):
     weights = torch.cat(bn_weights_abs)
     mask = [weight > threshold for weight in bn_weights_abs]
     return mask
-
 
 # ENTRYPOINT secure_train.py #530
 def cal_pruned_flops(prune_info):
@@ -297,7 +264,6 @@ def cal_pruned_flops(prune_info):
         ])
         pruned_flops += num_pruned * per_channel_flops
     return pruned_flops, info
-
 
 # ENTRYPOINT secure_train.py #489
 def get_rho_scheduler(prune_params, steps_per_epoch):
@@ -326,12 +292,10 @@ def get_rho_scheduler(prune_params, steps_per_epoch):
         else:
             return (i - free_iterations) / (warmup_iterations -
                                             free_iterations) * rho
-
     if scheduler == 'linear':
         return linear_fun
     else:
         raise ValueError('Unknown sparsity scheduler {}'.format(scheduler))
-
 
 # ENTRYPOINT secure_train.py #127
 def output_searched_network(model, infos, flags):
@@ -345,7 +309,6 @@ def output_searched_network(model, infos, flags):
         ]
     }
     bn_prune_filter = flags.get('bn_prune_filter', None)
-
     res = []
     if 'skip_expand1' in bn_prune_filter:
         t, c, n, s, ks = inverted_residual_setting[0]
@@ -355,7 +318,6 @@ def output_searched_network(model, infos, flags):
         res.append([c, n, s, ks, [model_kwargs['input_channel']], False])
         inverted_residual_setting = inverted_residual_setting[1:]
         blocks = blocks[n:]
-
     idx_info = 0
     for block in blocks:
         channels = []

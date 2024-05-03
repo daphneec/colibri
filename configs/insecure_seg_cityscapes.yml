@@ -51,7 +51,7 @@ reset_param_method: mnas
 
 model: models.hrnet
 model_kwparams: {
-  active_fn: 'nn.ReLU',
+  active_fn: 'quad',
   num_classes: 19,
   width_mult: 1.0,
   round_nearest: 2,
@@ -76,7 +76,7 @@ model_kwparams: {
 }
 net_params: ''
 base_total_batch: 32
-per_gpu_batch_size: 4
+per_gpu_batch_size: 16
 distill: False
 prune_params: {
   method: network_slimming,
@@ -93,7 +93,7 @@ use_distributed: True
 allreduce_bn: False
 
 model_shrink_threshold: 0.001
-model_shrink_delta_flops: 1
+model_shrink_delta_nsecs: 100
 bn_calibration: True
 bn_calibration_steps: 10
 bn_calibration_per_gpu_batch_size: 16
@@ -108,6 +108,6 @@ log_interval: 10
 num_epochs: 430
 base_lr: 0.04
 single_gpu_test: False
-eval_interval: 3
+eval_interval: 10
 data_root: ./data/cityscapes
 log_dir: output/seg_cityscapes

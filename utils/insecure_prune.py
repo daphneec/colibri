@@ -33,18 +33,19 @@ class PruneInfoTransformer(object):
 
     def update_penalty(self):
         for item in self._info.values():
-            print("### START UPDATE PENALTY (DAPHNEE'S VOICE) ###")
+            print("### BEGIN UPDATE PENALTY ###")
             print(f"Number of seconds: {item['nsecs']}")
-            print(f"Original thing to subtract: {2 * (item['initial_channels'] ** 2) * 64}")
-            # avg_nsecs = (item['nsecs'] - 2 * (item['initial_channels'] ** 2) * 64) / item['initial_channels']
-            print(f"Renewed thing to subtract: 0")
+            print(f"Original formular to subtract from avg_nsecs: {2 * (item['initial_channels'] ** 2) * 64}")
+            old_avg_nsecs = (item['nsecs'] - 2 * (item['initial_channels'] ** 2) * 64) / item['initial_channels']
+            print(f"Old avg_nsecs: '{old_avg_nsecs}'")
             avg_nsecs = item['nsecs'] / item['initial_channels']
-            print(f"New average thing: '{avg_nsecs}'")
-            # uniq_nsecs = 2 * (item['channels'] ** 2 - max(item['channels'] - 1, 0) ** 2) * 64
+            print(f"New avg_nsecs: '{avg_nsecs}'")
             print(f"The number of operations if there was a channel less: {item['channels'] ** 2 - max(item['channels'] - 1, 0) ** 2}")
             print(f"Original unique thing: '{2 * (item['channels'] ** 2 - max(item['channels'] - 1, 0) ** 2) * 64}'")
+            old_uniq_nsecs = 2 * (item['channels'] ** 2 - max(item['channels'] - 1, 0) ** 2) * 64
             uniq_nsecs = item['per_channel_nsecs'] * (item['channels'] ** 2 - max(item['channels'] - 1, 0) ** 2)
-            print(f"New unique thing: '{uniq_nsecs}'")
+            print(f"Old unique nsecs: '{old_uniq_nsecs}'")
+            print(f"New unique nsecs: '{uniq_nsecs}'")
             item['penalty'] = (avg_nsecs + uniq_nsecs) / self.norm_factor
             print(f"Penalty: '{item['penalty']}'")
             print("### END UPDATE PENALTY ###")
@@ -265,35 +266,11 @@ def get_bn_to_prune(model, flags, verbose=True):
 # Entrypoint secure_train.py #227
 def cal_bn_l1_loss(bn_weights, penalties, rho):
     """Calculate l1 loss."""
-    # print(len(bn_weights), len(penalties))  # The length degrades with training. (some are removed)
     assert len(bn_weights) == len(penalties)
     loss = 0.0
     for weight, penal in zip(bn_weights, penalties):
         loss += rho * penal * weight.abs().sum()
     return loss
-
-
-### UNUSED ###
-# def cal_mask_network_slimming_by_flops(weights,
-#                                        prune_info,
-#                                        flops_to_prune,
-#                                        incremental=False):
-#     """Calculate mask alive atomic blocks given FLOPS target."""
-#     bn_weights_abs = [weight.detach().abs() for weight in weights]
-#     weights = torch.cat([weight for weight in bn_weights_abs])
-#     weights_sorted, indices = torch.sort(weights)
-#     flops = torch.cat([
-#         torch.full_like(weight, per_channel_flop)
-#         for weight, per_channel_flop in zip(
-#             bn_weights_abs, prune_info.get_info_list('per_channel_flops'))
-#     ])[indices]
-#     idx_threshold = torch.nonzero(
-#         torch.cumsum(flops, 0) > flops_to_prune)[0].item()
-#     threshold = weights_sorted[idx_threshold].item()
-#     mask = [weight > threshold for weight in bn_weights_abs]
-#     return mask, threshold
-##############
-
 
 # ENTRYPOINT secure_train.py #527
 def cal_mask_network_slimming_by_threshold(weights, threshold):
@@ -306,7 +283,7 @@ def cal_mask_network_slimming_by_threshold(weights, threshold):
 
 # ENTRYPOINT secure_train.py #530
 def cal_pruned_nsecs(prune_info):
-    """Calculate total NSECS for dead atomic blocks."""
+    """Calculate total NSECS for dead atomic blocks.."""
     info = []
     pruned_nsecs = 0
     # CHANGE: Changing the channels into seconds name change and everything

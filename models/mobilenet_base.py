@@ -543,12 +543,28 @@ class InvertedResidualChannels(nn.Module):
         ]
         self.compress_by_mask(masks, **kwargs)
 
+def quad(x):
+    """Polynomial approximation of ReLU by MPCFormer (Li et al., 2023)"""
+    return 0.125*torch.square(x) + 0.25*x + 0.5
+
+def secure_quad(x):
+    """Polynomial approximation of ReLU by MPCFormer (Li et al., 2023). x is a cryptenTensor"""
+    return 0.125*(x.square()) + 0.25*x + 0.5
+
+def softmax_2quad(scores, attention_mask_zero_one, dim):
+    """Polynomial approximation of Softmax by MPCFormer (Li et al., 2023)"""
+    scores =  (scores + 5) ** 2
+    scores *= attention_mask_zero_one
+    scores = scores / torch.sum(scores, dim=dim, keepdims=True)
+    return scores
 
 def get_active_fn(name):
     """Select activation function."""
     active_fn = {
-        'nn.ReLU6': functools.partial(nn.ReLU6, inplace=True),
-        'nn.ReLU': functools.partial(nn.ReLU, inplace=True),
+        'nn.ReLU6': functools.partial(cnn.ReLU6),
+        'nn.ReLU': functools.partial(cnn.ReLU),
+        'quad': quad(),
+        'secure_quad': functools.partial(secure_quad),
         'nn.Swish': Swish,
         'nn.HSwish': HSwish,
     }[name]
@@ -585,7 +601,9 @@ def init_weights_mnas(m):
             fan_out = m.weight[0][0].numel()
         else:
             _, fan_out = nn.init._calculate_fan_in_and_fan_out(m.weight)
-        gain = nn.init.calculate_gain('relu')
+        #QUAD ADDED
+        #gain = nn.init.calculate_gain('relu')
+        gain = nn.init.calculate_gain('quad')
         std = gain / math.sqrt(fan_out)
         nn.init.normal_(m.weight, 0.0, std)
         if m.bias is not None:

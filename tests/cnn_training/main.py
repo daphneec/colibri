@@ -30,6 +30,7 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.utils
 from torchvision import datasets, transforms
+from models.mobilenet_base import secure_quad
 
 
 ##### HELPER FUNCTIONS #####
@@ -77,7 +78,9 @@ class DigitRecognizer(cnn.Module):
             # Add the ReLU if not the last
             if i < 2 + len(hidden_sizes) - 1 - 1:
                 print(f"[DigitRecognizer] Adding cnn.ReLU()")
-                self.layers.append(cnn.ReLU())
+                # QUAD ADDED
+                #self.layers.append(cnn.ReLU())
+                self.layers.append(secure_quad())
         print(f"[DigitRecognizer] Adding cnn.LogSoftmax(dim=1)")
         self.layers.append(cnn.LogSoftmax(dim=1))
 

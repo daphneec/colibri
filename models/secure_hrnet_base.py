@@ -7,7 +7,7 @@ import crypten.nn as cnn
 import collections
 import numbers
 from models.secure_mobilenet_base import _make_divisible
-from models.secure_mobilenet_base import get_active_fn
+from models.secure_mobilenet_base import get_active_fn, secure_quad
 from models.secure_mobilenet_base import InvertedResidualChannels
 from models.secure_upsample import UpsampleNearest
 
@@ -23,7 +23,9 @@ class InvertedResidual(InvertedResidualChannels):
                  stride,
                  expand_ratio=6,
                  kernel_sizes=[3, 5, 7],
-                 active_fn=get_active_fn('nn.ReLU'),
+                 #QUAD ADDED
+                 #active_fn=get_active_fn('nn.ReLU'),
+                 active_fn=get_active_fn('quad'),
                  batch_norm_kwargs={'momentum': 0.1, 'eps': 1e-5}):
 
         def _expand_ratio_to_hiddens(expand_ratio):
@@ -75,7 +77,9 @@ class BasicBlock(cnn.Module):
                  expand_ratio=4,
                  kernel_sizes=[3, 5, 7],
                  batch_norm_kwargs={'momentum': 0.1, 'eps': 1e-5},
-                 active_fn=get_active_fn('nn.ReLU')):
+                 #QUAD ADDED 
+                 #active_fn=get_active_fn('nn.ReLU')):
+                 active_fn=get_active_fn('quad')):
         super(BasicBlock, self).__init__()
         self.conv1 = block(
             inplanes,
@@ -113,8 +117,9 @@ class BasicBlock(cnn.Module):
             residual = self.downsample(x)
 
         out += residual
-        out = self.relu(out)
-
+        # QUAD ADDED
+        #out = self.relu(out)
+        out = 0.125*(out.square()) + 0.25*out + 0.5
         return out
 
 
@@ -141,11 +146,15 @@ class Bottleneck(cnn.Module):
 
         out = self.conv1(x)
         out = self.bn1(out)
-        out = self.relu(out)
+        # QUAD ADDED
+        #out = self.relu(out)
+        out = 0.125*(out.square()) + 0.25*out + 0.5
 
         out = self.conv2(out)
         out = self.bn2(out)
-        out = self.relu(out)
+        # QUAD ADDED
+        #out = self.relu(out)
+        out = 0.125*(out.square()) + 0.25*out + 0.5
 
         out = self.conv3(out)
         out = self.bn3(out)
@@ -154,7 +163,9 @@ class Bottleneck(cnn.Module):
             residual = self.downsample(x)
 
         out += residual
-        out = self.relu(out)
+        # QUAD ADDED
+        #out = self.relu(out)
+        out = 0.125*(out.square()) + 0.25*out + 0.5
 
         return out
 
@@ -270,7 +281,9 @@ class HighResolutionModule(cnn.Module):
                                           2),
                                 # nn.BatchNorm2d(num_outchannels_conv3x3,
                                 #                momentum=BN_MOMENTUM),
-                                cnn.ReLU()))
+                                # QUAD ADDED
+                                #cnn.ReLU()))
+                                secure_quad()))
                     fuse_layer.append(cnn.Sequential(*conv3x3s))
             fuse_layers.append(cnn.ModuleList(fuse_layer))
 
@@ -294,7 +307,9 @@ class HighResolutionModule(cnn.Module):
                     y = y + x[j]
                 else:
                     y = y + self.fuse_layers[i][j](x[j])
-            x_fuse.append(self.relu(y))
+            #QUAD ADDED
+            #x_fuse.append(self.relu(y))
+            x_fuse.append((0.125*(y.square()) + 0.25*y + 0.5))
 
         return x_fuse
 
@@ -317,7 +332,9 @@ class HighResolutionNetBase(cnn.Module):
                  bn_momentum=0.1,
                  bn_epsilon=1e-5,
                  dropout_ratio=0.2,
-                 active_fn='nn.ReLU',
+                 #QUAD ADDED
+                 #active_fn='nn.ReLU',
+                 active_fn='secure_quad',
                  block='InvertedResidualChannels',
                  width_mult=1.0,
                  round_nearest=8,
@@ -431,7 +448,9 @@ class HighResolutionNetBase(cnn.Module):
                           out_channels,
                           2),
                 # nn.BatchNorm2d(out_channels, momentum=BN_MOMENTUM),
-                cnn.ReLU()
+                #QUAD ADDED
+                #cnn.ReLU()
+                secure_quad()
             )
 
             downsamp_modules.append(downsamp_module)
@@ -446,7 +465,9 @@ class HighResolutionNetBase(cnn.Module):
                 padding=0
             ),
             cnn.BatchNorm2d(self.last_channel, momentum=BN_MOMENTUM),
-            cnn.ReLU()
+            # QUAD ADDED
+            #cnn.ReLU()
+            secure_quad()
         )
 
         return incre_modules, downsamp_modules, final_layer
@@ -469,7 +490,9 @@ class HighResolutionNetBase(cnn.Module):
                                   bias=False),
                         cnn.BatchNorm2d(
                             num_channels_cur_layer[i], momentum=BN_MOMENTUM),
-                        cnn.ReLU()))
+                        # QUAD ADDED
+                        #cnn.ReLU()))
+                         secure_quad()))
                 else:
                     transition_layers.append(None)
             else:
@@ -482,7 +505,9 @@ class HighResolutionNetBase(cnn.Module):
                         cnn.Conv2d(
                             inchannels, outchannels, 3, 2, 1, bias=False),
                         cnn.BatchNorm2d(outchannels, momentum=BN_MOMENTUM),
-                        cnn.ReLU()))
+                        # QUAD ADDED
+                        #cnn.ReLU()))
+                        secure_quad()))
                 transition_layers.append(cnn.Sequential(*conv3x3s))
 
         return cnn.ModuleList(transition_layers)
@@ -590,7 +615,9 @@ class HighResolutionNetBase(cnn.Module):
         for m in self.modules():
             if isinstance(m, cnn.Conv2d):
                 cnn.init.kaiming_normal_(
-                    m.weight, mode='fan_out', nonlinearity='relu')
+                    #QUAD ADDED
+                    #m.weight, mode='fan_out', nonlinearity='relu')
+                    m.weight, mode='fan_out', nonlinearity='secure_quad')
             elif isinstance(m, cnn.BatchNorm2d):
                 cnn.init.constant_(m.weight, 1)
                 cnn.init.constant_(m.bias, 0)

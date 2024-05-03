@@ -82,7 +82,9 @@ class ParallelModule(nn.Module):
                  expand_ratio=6,
                  kernel_sizes=[3, 5, 7],
                  batch_norm_kwargs=None,
-                 active_fn=get_active_fn('nn.ReLU')):
+                 # QUAD ACTIV
+                 #active_fn=get_active_fn('nn.ReLU')):
+                 active_fn=get_active_fn('quad')):
         super(ParallelModule, self).__init__()
 
         self.num_branches = num_branches
@@ -160,7 +162,9 @@ class FuseModule(nn.Module):
                  expand_ratio=6,
                  kernel_sizes=[3, 5, 7],
                  batch_norm_kwargs=None,
-                 active_fn=get_active_fn('nn.ReLU'),
+                 # QUAD ADDED
+                 #active_fn=get_active_fn('nn.ReLU'),
+                 active_fn=get_active_fn('quad'),
                  use_hr_format=False,
                  only_fuse_neighbor=True,
                  directly_downsample=True):
@@ -325,7 +329,9 @@ class FuseModule(nn.Module):
                         y = y + self.fuse_layers[i][j](x[j])
                     else:  # hr_format, None
                         y = y + x[j]
-                x_fuse.append(self.relu(y))
+                # QUAD ADDED
+                #x_fuse.append(self.relu(y))
+                x_fuse.append((0.125*torch.square(y) + 0.25*y + 0.5))
             if self.use_hr_format:
                 for branch in range(self.in_branches, self.out_branches):
                     x_fuse.append(self.fuse_layers[branch][0](x_fuse[branch - 1]))
@@ -346,7 +352,9 @@ class FuseModule(nn.Module):
                                     align_corners=False)
                             else:  # hr_format, None
                                 y = y + x[j]
-                x_fuse.append(self.relu(y))
+                # QUAD ADDED
+                #x_fuse.append(self.relu(y))
+                x_fuse.append((0.125*torch.square(y) + 0.25*y + 0.5))
             if self.use_hr_format:
                 for branch in range(self.in_branches, self.out_branches):
                     x_fuse.append(self.fuse_layers[branch][0](x_fuse[branch - 1]))
@@ -363,7 +371,9 @@ class HeadModule(nn.Module):
                  expand_ratio=6,
                  kernel_sizes=[3, 5, 7],
                  batch_norm_kwargs=None,
-                 active_fn=get_active_fn('nn.ReLU'),
+                 # QUAD ADDED
+                 # active_fn=get_active_fn('nn.ReLU'),
+                 active_fn=get_active_fn('quad'),
                  concat_head_for_cls=False):
         super(HeadModule, self).__init__()
 
@@ -461,7 +471,9 @@ class HighResolutionNet(nn.Module):
                  bn_momentum=0.1,
                  bn_epsilon=1e-5,
                  dropout_ratio=0.2,
-                 active_fn='nn.ReLU',
+                 # QUAD ADDED
+                 #active_fn='nn.ReLU',
+                 active_fn='quad',
                  block='InvertedResidualChannels',
                  width_mult=1.0,
                  round_nearest=8,
@@ -600,7 +612,9 @@ class HighResolutionNet(nn.Module):
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 if not self.initial_for_heatmap:
-                    nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                    # QUAD ADDED
+                    #nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                    nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='quad')
                 else:
                     nn.init.normal_(m.weight, std=0.001)
                     for name, _ in m.named_parameters():

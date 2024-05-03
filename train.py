@@ -2,10 +2,8 @@
 import logging
 import os
 import time
-
 import torch
 import subprocess
-
 from utils.config import DEVICE_MODE, FLAGS, _ENV_EXPAND
 from utils.common import get_params_by_name
 from utils.common import set_random_seed
@@ -22,22 +20,19 @@ from utils import distributed as udist
 from utils import prune
 from mmseg import seg_dataflow
 from mmseg.loss import CrossEntropyLoss, JointsMSELoss, accuracy_keypoint
-
 import models.mobilenet_base as mb
 import common as mc
 from mmseg.validation import SegVal, keypoint_val
-
 import warnings
 warnings.filterwarnings("ignore")
-
 
 def shrink_model(model_wrapper,
                  ema,
                  optimizer,
                  prune_info,
-                 threshold=1e-3,
+                 threshold,
                  ema_only=False):
-    r"""Dynamic network shrinkage to discard dead atomic blocks.
+    """Dynamic network shrinkage to discard dead atomic blocks.
 
     Args:
         model_wrapper: model to be shrinked.
@@ -129,15 +124,12 @@ def log_pruned_info(model, flops_pruned, infos, prune_threshold):
         logging.info('Pruned model: {}'.format(
             prune.output_searched_network(model, infos, FLAGS.prune_params)))
 
-    #flops_remain = #model.n_macs - flops_pruned
     if udist.is_master():
         logging.info(
-            'Prune threshold: {}, flops pruned: {}'.format(
+            'Prune threshold (flop unit): {}, flops pruned: {}'.format(
                 prune_threshold, flops_pruned))
-            #'Prune threshold: {}, flops pruned: {}, flops remain: {}'.format(
-            #    prune_threshold, flops_pruned, flops_remain))
         mc.summary_writer.add_scalar('prune/flops/{}'.format(prune_threshold),
-                                     FLAGS._global_step) #flops_remain, FLAGS._global_step)
+                                     FLAGS._global_step)
 
 
 def run_one_epoch(epoch,
@@ -520,7 +512,7 @@ def train_val_test():
                                                    model_wrapper, ema, 'val', segval, val_set)
 
             if FLAGS.prune_params['method'] is not None and FLAGS.prune_params['bn_prune_filter'] is not None:
-                prune_threshold = FLAGS.model_shrink_threshold  # 5 instead of 1e-3
+                prune_threshold = FLAGS.model_shrink_threshold 
                 masks = prune.cal_mask_network_slimming_by_threshold(
                     get_prune_weights(model_eval_wrapper), prune_threshold)  # get mask for all bn weights (depth-wise)
                 FLAGS._bn_to_prune.add_info_list('mask', masks)

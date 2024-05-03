@@ -12,7 +12,6 @@ import models.transformer as transformer
 from utils import distributed as udist
 from utils.config import DEVICE_MODE
 from utils.secure_profiling_prediction_powerful import *
-
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -24,40 +23,9 @@ params_space = 15
 macs_space = 15
 seconds_space = 15
 
-
-# class Timer(object):
-
-#     def __init__(self, verbose=False):
-#         self.verbose = verbose
-#         self.start = None
-#         self.end = None
-
-#     def __enter__(self):
-#         self.start = time.time()
-#         return self
-
-#     def __exit__(self, *args):
-#         self.end = time.time()
-#         self.time = self.end - self.start
-#         if self.verbose:
-#             print('Elapsed time: %f ms.' % self.time)
-
-
 def get_params(self):
     """get number of params in module"""
     return np.sum([np.prod(list(w.size())) for w in self.parameters()])
-
-
-# def run_forward(self, input, num_forwards=10):
-#     if num_forwards <= 0:
-#         return 0.0
-#     with Timer() as t:
-#         for _ in range(num_forwards):
-#             self.forward(*input)
-#             if DEVICE_MODE == "gpu": torch.cuda.synchronize()
-
-#     return int(t.time * 1e9 / num_forwards)
-
 
 def conv_module_name_filter(name):
     """filter module name to have a short view"""
@@ -78,10 +46,6 @@ def module_profiling(self, input, output, num_forwards, verbose):
         m.n_macs += getattr(sub_op, 'n_macs', 0)
         m.n_params += getattr(sub_op, 'n_params', 0)
         m.n_seconds += getattr(sub_op, 'n_seconds', 0)
-
-    # _run_forward = functools.partial(run_forward, num_forwards=num_forwards)
-    # if isinstance(self, (hr.ParallelModule, hr.FuseModule, hr.HeadModule)) \
-    #     or (isinstance(self, nn.Sequential) and isinstance(self[0], hr.ParallelModule)):
     if not input:
         return
     if isinstance(self, nn.MultiheadAttention) or isinstance(input[0], list) or isinstance(output, list):
@@ -89,8 +53,6 @@ def module_profiling(self, input, output, num_forwards, verbose):
     else:
         ins = input[0].size()
         outs = output.size()
-        # NOTE: There are some difference between type and isinstance, thus please
-        # be careful.
         t = type(self)
         self._profiling_input_size = ins
         self._profiling_output_size = outs
@@ -137,7 +99,7 @@ def module_profiling(self, input, output, num_forwards, verbose):
     elif isinstance(self, nn.AdaptiveAvgPool2d):
         self.n_macs = ins[1] * ins[2] * ins[3] * ins[0]
         self.n_params = 0
-        self.n_seconds = 0
+        self.n_seconds = avgpool_time_cal(ins, outs, self.kernel_size) # calculated in ms 
         self.name = self.__repr__()
 
     elif isinstance(self, mb.SqueezeAndExcitation):
@@ -163,6 +125,7 @@ def module_profiling(self, input, output, num_forwards, verbose):
         if self.use_transformer and self.downsampling_transformer and not self.use_res_connect:
             add_sub(self, self.transformer)
         self.name = self.__repr__()
+        print("Inside Inverted Residual model profiling, n_seconds is {} and n_macs is {}".format(self.n_seconds, self.n_macs))
     
     elif isinstance(self, mb.InvertedResidualChannelsFused):
         self.n_macs = 0
@@ -289,6 +252,8 @@ def module_profiling(self, input, output, num_forwards, verbose):
             nn.Sequential,
             nn.ReLU6,
             nn.ReLU,
+            mb.secure_quad,
+            mb.quad,
             mb.Swish,
             mb.Narrow,
             mb.Identity,
@@ -302,13 +267,13 @@ def module_profiling(self, input, output, num_forwards, verbose):
                logging.info('WARNING: leaf module {} has zero n_macs.'.format(
                    type(self)))
         return
-    if verbose:
-        if udist.is_master():
-            logging.info(
-                self.name.ljust(name_space, ' ') +
-                '{:,}'.format(self.n_params).rjust(params_space, ' ') +
-                '{:,}'.format(self.n_macs).rjust(macs_space, ' ') +
-                '{:,}'.format(self.n_seconds).rjust(seconds_space, ' '))
+    
+    if udist.is_master():
+        logging.info(
+            self.name.ljust(name_space, ' ') +
+            '{:,}'.format(self.n_params).rjust(params_space, ' ') +
+            '{:,}'.format(self.n_macs).rjust(macs_space, ' ') +
+            '{:,}'.format(self.n_seconds).rjust(seconds_space, ' '))
     return
 
 

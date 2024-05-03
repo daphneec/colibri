@@ -215,7 +215,9 @@ class Transformer(nn.Module):
 class TransformerEncoderLayer(nn.Module):
 
     def __init__(self, d_model, dim_feedforward=None, nhead=1, dropout=0.1,
-                 activation="relu", normalize_before=False):
+                 # QUAD ADDED
+                 #activation="relu", normalize_before=False):
+                 activation="quad", normalize_before=False):
         super().__init__()
 
         if dim_feedforward is None:
@@ -273,7 +275,9 @@ class TransformerEncoderLayer(nn.Module):
 class TransformerDecoderLayer(nn.Module):
 
     def __init__(self, d_model, dim_feedforward=None, nhead=1, dropout=0.1,
-                 activation="relu"):
+                 # QUAD ADDED 
+                 #activation="relu"):
+                 activation="quad"):
         super().__init__()
 
         if dim_feedforward is None:
@@ -320,6 +324,20 @@ def get_points_single(size, stride=1, dtype=np.float32):
     points = (points - points.mean(axis=(0, 1))) / points.std(axis=(0, 1))
     return points.transpose((2, 1, 0))
 
+def quad(x):
+    """Polynomial approximation of ReLU by MPCFormer (Li et al., 2023). x is a torch tensor."""
+    return 0.125*torch.square(x) + 0.25*x + 0.5
+
+def secure_quad(x):
+    """Polynomial approximation of ReLU by MPCFormer (Li et al., 2023). x is a cryptenTensor"""
+    return 0.125*(x.square()) + 0.25*x + 0.5
+
+def softmax_2quad(scores, attention_mask_zero_one, dim):
+    """Polynomial approximation of Softmax by MPCFormer (Li et al., 2023)"""
+    scores =  (scores + 5) ** 2
+    scores *= attention_mask_zero_one
+    scores = scores / torch.sum(scores, dim=dim, keepdims=True)
+    return scores
 
 def _get_activation_fn(activation):
     """Return an activation function given a string"""
@@ -329,6 +347,8 @@ def _get_activation_fn(activation):
         return F.gelu
     if activation == "glu":
         return F.glu
+    if activation == "quad":
+        return quad
     raise RuntimeError(F"activation should be relu/gelu, not {activation}.")
 
 

@@ -23,7 +23,8 @@ class InvertedResidual(InvertedResidualChannels):
                  stride,
                  expand_ratio=6,
                  kernel_sizes=[3, 5, 7],
-                 active_fn=get_active_fn('nn.ReLU'),
+                 #active_fn=get_active_fn('nn.ReLU'),
+                 active_fn=get_active_fn('quad'),
                  batch_norm_kwargs={'momentum': 0.1, 'eps': 1e-5}):
 
         def _expand_ratio_to_hiddens(expand_ratio):
@@ -75,7 +76,8 @@ class BasicBlock(nn.Module):
                  expand_ratio=4,
                  kernel_sizes=[3, 5, 7],
                  batch_norm_kwargs={'momentum': 0.1, 'eps': 1e-5},
-                 active_fn=get_active_fn('nn.ReLU')):
+                 #active_fn=get_active_fn('nn.ReLU')):
+                 active_fn=get_active_fn('quad'),
         super(BasicBlock, self).__init__()
         self.conv1 = block(
             inplanes,
@@ -113,8 +115,9 @@ class BasicBlock(nn.Module):
             residual = self.downsample(x)
 
         out += residual
-        out = self.relu(out)
-
+        # QUAD ADDED
+        #out = self.relu(out)
+        out = 0.125*torch.square(out) + 0.25*out + 0.5
         return out
 
 
@@ -141,11 +144,16 @@ class Bottleneck(nn.Module):
 
         out = self.conv1(x)
         out = self.bn1(out)
-        out = self.relu(out)
+        # QUAD ADDED
+        #out = self.relu(out)
+        out = 0.125*torch.square(out) + 0.25*out + 0.5
+
 
         out = self.conv2(out)
         out = self.bn2(out)
-        out = self.relu(out)
+        # QUAD ADDED
+        #out = self.relu(out)
+        out = 0.125*torch.square(out) + 0.25*out + 0.5
 
         out = self.conv3(out)
         out = self.bn3(out)
@@ -154,7 +162,9 @@ class Bottleneck(nn.Module):
             residual = self.downsample(x)
 
         out += residual
-        out = self.relu(out)
+        # QUAD ADDED
+        #out = self.relu(out)
+        out = 0.125*torch.square(out) + 0.25*out + 0.5
 
         return out
 
@@ -294,7 +304,9 @@ class HighResolutionModule(nn.Module):
                     y = y + x[j]
                 else:
                     y = y + self.fuse_layers[i][j](x[j])
-            x_fuse.append(self.relu(y))
+            # QUAD ADDED
+            #x_fuse.append(self.relu(y))
+            x_fuse.append((0.125*torch.square(y) + 0.25*y + 0.5))
 
         return x_fuse
 
@@ -431,7 +443,9 @@ class HighResolutionNetBase(nn.Module):
                           out_channels,
                           2),
                 # nn.BatchNorm2d(out_channels, momentum=BN_MOMENTUM),
-                nn.ReLU(inplace=True)
+                # QUAD ADDED
+                #nn.ReLU(inplace=True)
+                quad(x),
             )
 
             downsamp_modules.append(downsamp_module)
@@ -446,7 +460,9 @@ class HighResolutionNetBase(nn.Module):
                 padding=0
             ),
             nn.BatchNorm2d(self.last_channel, momentum=BN_MOMENTUM),
-            nn.ReLU(inplace=True)
+            # QUAD ADDED
+            #nn.ReLU(inplace=True)
+            quad(x),
         )
 
         return incre_modules, downsamp_modules, final_layer
@@ -470,6 +486,10 @@ class HighResolutionNetBase(nn.Module):
                         nn.BatchNorm2d(
                             num_channels_cur_layer[i], momentum=BN_MOMENTUM),
                         nn.ReLU(inplace=True)))
+                        # QUAD ADDED
+                        #nn.ReLU(inplace=True)
+                        quad(x),
+            quad(x),
                 else:
                     transition_layers.append(None)
             else:
@@ -482,7 +502,9 @@ class HighResolutionNetBase(nn.Module):
                         nn.Conv2d(
                             inchannels, outchannels, 3, 2, 1, bias=False),
                         nn.BatchNorm2d(outchannels, momentum=BN_MOMENTUM),
-                        nn.ReLU(inplace=True)))
+                        # QUAD ADDED
+                        #nn.ReLU(inplace=True)))
+                        quad(x)))
                 transition_layers.append(nn.Sequential(*conv3x3s))
 
         return nn.ModuleList(transition_layers)
@@ -588,7 +610,9 @@ class HighResolutionNetBase(nn.Module):
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 nn.init.kaiming_normal_(
-                    m.weight, mode='fan_out', nonlinearity='relu')
+                    # QUAD ADDED
+                    #m.weight, mode='fan_out', nonlinearity='relu')
+                    m.weight, mode='fan_out', nonlinearity='quad')
             elif isinstance(m, nn.BatchNorm2d):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)

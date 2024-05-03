@@ -2,10 +2,8 @@
 import logging
 import os
 import time
-
 import torch
 import subprocess
-
 from utils.config import DEVICE_MODE, FLAGS, _ENV_EXPAND
 from utils.common import get_params_by_name
 from utils.common import set_random_seed
@@ -22,19 +20,19 @@ from utils import distributed as udist
 from utils import insecure_prune as iprune
 from mmseg import seg_dataflow
 from mmseg.loss import CrossEntropyLoss, JointsMSELoss, accuracy_keypoint
-
 import models.mobilenet_base as mb
 import insecure_common as mc
 from mmseg.validation import SegVal, keypoint_val
-
+import warnings
+warnings.filterwarnings("ignore")
 
 def shrink_model(model_wrapper,
                  ema,
                  optimizer,
                  prune_info,
-                 threshold=1e-3,
+                 threshold,
                  ema_only=False):
-    r"""Dynamic network shrinkage to discard dead atomic blocks.
+    """Dynamic network shrinkage to discard dead atomic blocks.
 
     Args:
         model_wrapper: model to be shrinked.
@@ -46,6 +44,7 @@ def shrink_model(model_wrapper,
             `$$\hat{alpha} \le threshold$$`. Otherwise use both current value
             and momentum version.
     """
+
     model = mc.unwrap_model(model_wrapper)
     for block_name, block in model.get_named_block_list().items():  # inverted residual blocks
         assert isinstance(block, mb.InvertedResidualChannels)
@@ -82,10 +81,9 @@ def shrink_model(model_wrapper,
                        verbose=False,
                        use_cuda=DEVICE_MODE == "gpu")
     if udist.is_master():
-        # logging.info('Model Shrink to FLOPS: {}'.format(model.n_macs))
         logging.info('Model Shrink to NSECS: {}'.format(model.n_seconds))
+        logging.info('Model Shrink to FLOPS: {}'.format(model.n_macs))
         logging.info('Current model: {}'.format(mb.output_network(model)))
-
 
 def get_prune_weights(model, use_transformer=False):
     """Get variables for pruning."""
@@ -104,6 +102,7 @@ def summary_bn(model, prefix):
             '{}/{}/{}'.format(prefix, 'bn_scale', name), param.detach(),
             FLAGS._global_step)
     if len(FLAGS._bn_to_prune.weight) > 0:
+        print("there are more than 0 parameters to")
         mc.summary_writer.add_histogram(
             '{}/bn_scale/all'.format(prefix),
             torch.cat([weight.detach() for weight in weights]),
@@ -114,7 +113,7 @@ def summary_bn(model, prefix):
 def log_pruned_info(model, nsecs_pruned, infos, prune_threshold):
     """Log pruning-related information."""
     if udist.is_master():
-        logging.info('nsec threshold: {}'.format(prune_threshold))
+        logging.info('weight threshold (weight must be bigger than to shrink): {}'.format(prune_threshold))
         for info in infos:
             if FLAGS.prune_params['logging_verbose']:
                 logging.info(
@@ -127,15 +126,12 @@ def log_pruned_info(model, nsecs_pruned, infos, prune_threshold):
         logging.info('Pruned model: {}'.format(
             iprune.output_searched_network(model, infos, FLAGS.prune_params)))
 
-    #nsecs_remain = #model.n_macs - nsecs_pruned
     if udist.is_master():
         logging.info(
-            'Prune threshold: {}, nsecs pruned: {}'.format(
+            'Prune threshold (weight unit): {}, nsecs pruned: {}'.format(
                 prune_threshold, nsecs_pruned))
-            #'Prune threshold: {}, nsecs pruned: {}, nsecs remain: {}'.format(
-            #    prune_threshold, nsecs_pruned, nsecs_remain))
         mc.summary_writer.add_scalar('prune/nsecs/{}'.format(prune_threshold),
-                                     FLAGS._global_step) #nsecs_remain, FLAGS._global_step)
+                                     FLAGS._global_step)
 
 
 def run_one_epoch(epoch,
@@ -518,7 +514,7 @@ def train_val_test():
                                                    model_wrapper, ema, 'val', segval, val_set)
 
             if FLAGS.prune_params['method'] is not None and FLAGS.prune_params['bn_prune_filter'] is not None:
-                prune_threshold = FLAGS.model_shrink_threshold  # 5 instead of 1e-3
+                prune_threshold = FLAGS.model_shrink_threshold  
                 masks = iprune.cal_mask_network_slimming_by_threshold(
                     get_prune_weights(model_eval_wrapper), prune_threshold)  # get mask for all bn weights (depth-wise)
                 FLAGS._bn_to_prune.add_info_list('mask', masks)
@@ -526,7 +522,7 @@ def train_val_test():
                 log_pruned_info(mc.unwrap_model(model_eval_wrapper), nsecs_pruned,
                                 infos, prune_threshold)
                 if not FLAGS.distill:
-                    if nsecs_pruned >= FLAGS.model_shrink_delta_flops \
+                    if nsecs_pruned >= FLAGS.model_shrink_delta_nsecs \
                             or epoch == FLAGS.num_epochs - 1:
                         ema_only = (epoch == FLAGS.num_epochs - 1)
                         shrink_model(model_wrapper, ema, optimizer, FLAGS._bn_to_prune,

@@ -39,7 +39,7 @@ def shrink_model(model_wrapper,
                  ema,
                  optimizer,
                  prune_info,
-                 threshold=1e-3,
+                 threshold,
                  ema_only=False):
     r"""Dynamic network shrinkage to discard dead atomic blocks.
 
@@ -53,6 +53,7 @@ def shrink_model(model_wrapper,
             `$$\hat{alpha} \le threshold$$`. Otherwise use both current value
             and momentum version.
     """
+    threshold=FLAGS.model_shrink_threshold
     model = mc.unwrap_model(model_wrapper)
     for block_name, block in model.get_named_block_list().items():  # inverted residual blocks
         assert isinstance(block, mb.InvertedResidualChannels)

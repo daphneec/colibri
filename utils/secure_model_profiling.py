@@ -302,6 +302,8 @@ def module_profiling(self, input, output, num_forwards, verbose):
             cnn.Sequential,
             cnn.ReLU6,
             cnn.ReLU,
+            mb.secure_quad,
+            mb.quad,
             mb.Swish,
             mb.Narrow,
             mb.Identity,
