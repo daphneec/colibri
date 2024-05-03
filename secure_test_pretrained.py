@@ -98,9 +98,8 @@ def val(rank):
         criterion = JointsMSELoss(use_target_weight=True)
 
     if DEVICE_MODE == "gpu": criterion = criterion.cuda()
-    # distributed
 
-    # check pretrained
+    # Server loads pretrained model
     if rank == SERVER:
         if FLAGS.pretrained:
             checkpoint = torch.load(FLAGS.pretrained,
@@ -124,7 +123,7 @@ def val(rank):
     if udist.is_master():
         logging.info(model_wrapper)
 
-    # data
+    # Client loads inference data 
     if FLAGS.dataset == 'cityscapes':
         (train_set, val_set, test_set) = seg_dataflow.cityscapes_datasets(FLAGS)
         segval = SegVal(num_classes=19)
@@ -179,7 +178,7 @@ def validate(epoch, calib_loader, val_loader, criterion, val_meters,
     #     if not FLAGS.use_distributed:
     #         logging.warning(
     #             'Only GPU0 is used when calibration when use DataParallel')
-    #     with torch.no_grad():
+    #     with crypten.no_grad():
     #         _ = run_one_epoch(epoch,
     #                           calib_loader,
     #                           model_eval_wrapper,
@@ -194,7 +193,7 @@ def validate(epoch, calib_loader, val_loader, criterion, val_meters,
     #         udist.allreduce_bn(model_eval_wrapper)
 
     # val
-    with torch.no_grad():
+    with crypten.no_grad():
         if FLAGS.model_kwparams.task == 'segmentation':
             if FLAGS.dataset == 'coco':
                 results = 0

@@ -318,7 +318,7 @@ def data_loader(train_set, val_set, test_set, FLAGS):
             sampler=sampler,
             drop_last=FLAGS.get('drop_last', False))
 
-    if FLAGS.use_distributed:
+    if FLAGS.use_distributed and (not FLAGS.test_only):
         if not FLAGS.test_only or FLAGS.bn_calibration:
             train_sampler = torch.utils.data.distributed.DistributedSampler(
                 train_set)

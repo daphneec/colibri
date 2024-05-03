@@ -85,7 +85,7 @@ class SegVal:
     def run(self, epoch, loader, model, FLAGS, test_name_list=None):
         """
         Args:
-        test_idx (list[int]): List of test image indices. Defaults to None, meaning testing all data.
+        test_name_list (list[string]): List of test image names. Defaults to None, meaning testing all data.
         """
         
         model.eval()
@@ -129,7 +129,7 @@ class SegVal:
                 world_size = 1 if FLAGS.single_gpu_test else get_world_size()
                 for _ in range(batch_size * world_size):
                     prog_bar.update()
-        if not FLAGS.single_gpu_test:
+        if ((not FLAGS.single_gpu_test) and (not FLAGS.test_only)):
             results = collect_results_cpu(results, len(dataset))
         performance = None
         if udist.is_master():
